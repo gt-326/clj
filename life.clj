@@ -10,9 +10,9 @@
 
 (ns examples.life
    (:import (java.awt Color Dimension)
-	         (javax.swing JPanel JFrame Timer JOptionPane)
-           (java.awt.event ActionListener KeyEvent KeyListener MouseListener)) 
-  (:gen-class))
+	    (javax.swing JPanel JFrame Timer JOptionPane)
+            (java.awt.event ActionListener KeyEvent KeyListener MouseListener)) 
+   (:gen-class))
 
 ; ----------------------------------------------------------
 ; functional model
@@ -56,7 +56,7 @@
        　[23 2] [23 6]
        　[25 1] [25 2] [25 6] [25 7]
        　[35 3] [35 4]
-       　[36 3] [36 4] }})
+       　[36 3] [36 4] } })
 
 ;----------------------------------------------------------
 
