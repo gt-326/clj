@@ -37,17 +37,29 @@
 (defn edge->dot [edge]
 　(str (dot-name (first edge)) "[label=\"" (dot-label (rest edge)) "\"];\n"))
 
-(defn edges->dot [edges dig_flg]
-　(let [sep (if dig_flg "->" "--")]
-　　(apply str
-　　　(map
-　　　　(fn [[k v]]
-　　　　　(if (seq? (first v))
-　　　　　　(if dig_flg
+(defn edges->dot [edges]
+　(apply str
+　　(map
+　　　(fn [[k v]]
+　　　　(if (seq? (first v))
+　　　　　(apply str
+　　　　　　(map (fn [edge_vals] (str (dot-name k) "->" (edge->dot edge_vals))) v))
+　　　　　(str (dot-name k) "->" (edge->dot v))))
+　　　edges)))
+
+(defn uedges->dot [edges]
+　(loop [e edges result ()]
+　　(if (empty? e)
+　　　(apply str (reverse result))
+　　　(recur (rest e)
+　　　　(cons
+　　　　　((fn [[k v]]
+　　　　　　(if (seq? (first v))
 　　　　　　　(apply str
-　　　　　　　　(map (fn [edge_vals] (str (dot-name k) sep (edge->dot edge_vals))) v)))
-　　　　　　(str (dot-name k) sep (edge->dot v))))
-　　　　edges))))
+　　　　　　　　(for [vv (reverse v) :when (not (.contains (keys (rest e)) (first vv)))]
+　　　　　　　　　　(str (dot-name k) "--" (edge->dot (rest vv)))))
+　　　　　　　(str (dot-name k) "--" (edge->dot v)))) (first e))
+　　　　　　result)))))
 
 ;;===============
 
@@ -55,7 +67,7 @@
 　(str
 　　(if dig_flg "digraph {\n" "graph {\n")
 　　(nodes->dot nodes)
-　　(edges->dot edges dig_flg)
+　　((if dig_flg edges->dot uedges->dot) edges)
 　　"}\n"))
 
 ;;===============
