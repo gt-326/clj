@@ -63,12 +63,12 @@
 
 ;;===============
 
-(defn graph->dot [nodes edges dig_flg]
+(defn graph->dot [nodes edges flg]
 　(str
-　　(if dig_flg "digraph {\n" "graph {\n")
+　　(if flg "digraph {\n" "graph {\n")
 　　(nodes->dot nodes)
-　　((if dig_flg edges->dot uedges->dot) edges)
-　　"}\n"))
+　　((if flg edges->dot uedges->dot) edges)
+　　"}\n")) 
 
 ;;===============
 
