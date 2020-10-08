@@ -1,0 +1,64 @@
+;;===============
+
+;;[ ６章　世界とのインターフェース：P77〜94 ]
+
+;;===============
+
+;; 補助関数
+(defn tweak-text [lst caps lit]
+　(loop [l lst c caps ll lit result ()]
+　　(if (empty? l)
+　　　(reverse result)
+　　　(let [ item (first l)
+　　　　　　　others (cond
+　　　　　　　　　　　　(= \space item) [c ll (cons item result)]
+　　　　　　　　　　　　(.contains '(\! \? \.) item) [true ll (cons item result)]
+　　　　　　　　　　　　(= \" item) [c (not ll) result]
+　　　　　　　　　　　　ll [nil ll (cons item result)]
+　　　　　　　　　　　　c [nil ll (cons (Character/toUpperCase item) result)]
+　　　　　　　　　　　　:else [nil nil (cons (Character/toLowerCase item) result)]) ]
+　　　　(recur (rest l) (others 0) (others 1) (others 2))))))
+
+(defn reset-game []
+　(reset! LOCATION 'living-room)
+　(reset! OBJ-LOCATION '({whiskey living-room}
+　　　　　　　　　　　　　　　{bucket living-room}
+　　　　　　　　　　　　　　　{chain garden}
+　　　　　　　　　　　　　　　{frog garden})))
+
+;;===============
+
+(def ALLOWED-COMMANDS '(look walk pickup inventory))
+
+(defn game-eval [sexp]
+　;; method java.util.Collection#contains()
+　(if (.contains ALLOWED-COMMANDS (first sexp))
+　　(eval sexp)
+　　'(i do not know that command.)))
+
+(defn game-read []
+　(let [cmd (read-string (str "(" (read-line) ")"))]
+　　(cons (first cmd) (map #(list 'quote %) (rest cmd)))))
+
+(defn game-print [lst-str]
+　(letfn [(fnc [lst] (clojure.string/replace (clojure.string/trim lst) #"[\(\)]" ""))]
+　　(let [val-str (apply str
+　　　　　　(tweak-text
+　　　　　　　(interleave (fnc (str lst-str)))　;; param1 of tweak-text
+　　　　　　　true　　　　　　　　　　　　　　　　　　;; param2 of tweak-text
+　　　　　　　nil))]　　　　　　　　　　　　　　　　　;; param3 of tweak-text
+
+　　　(println (fnc val-str))
+　　　(clojure.pprint/fresh-line))))
+
+(defn game-repl []
+　(loop [cmd (game-read)]
+　　(if (= (first cmd) 'quit)
+　　　(do
+　　　　(reset-game)
+　　　　'bye!)
+　　　(do
+　　　　(game-print `(~@(game-eval cmd)))
+　　　　(recur (game-read))))))
+
+;;===============

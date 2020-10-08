@@ -1,0 +1,71 @@
+;;===============
+
+;;[ ７章　単純なリストの先へ：P99〜119 ]
+
+;;===============
+
+(defn substitute-if [alt-val pred coll]
+　(map #(if (pred %) alt-val %) coll))
+
+;;===============
+
+(def MAX-LABEL-LENGTH 30)
+
+(defn dot-label [exp]
+　(if exp
+　　(let [sexp (str exp)]
+　　　(if (> (count sexp) MAX-LABEL-LENGTH)
+　　　　(str (subs sexp 0 (- MAX-LABEL-LENGTH 3)) "...")
+　　　　sexp))
+　　""))
+
+(defn dot-name [exp]
+　(clojure.string/upper-case
+　　(clojure.string/replace exp #"[^A-Za-z0-9_]" "_")))
+
+;;===============
+
+(defn nodes->dot [nodes]
+　(apply str
+　　(map
+　　　(fn [[k v]]
+　　　　(str (dot-name k) "[label=\"" (dot-label (str (dot-name k) " " v)) "\"];\n"))
+　　　nodes)))
+
+;;===============
+
+(defn edge->dot [edge]
+　(str (dot-name (first edge)) "[label=\"" (dot-label (rest edge)) "\"];\n"))
+
+(defn edges->dot [edges dig_flg]
+　(let [sep (if dig_flg "->" "--")]
+　　(apply str
+　　　(map
+　　　　(fn [[k v]]
+　　　　　(if (seq? (first v))
+　　　　　　(if dig_flg
+　　　　　　　(apply str
+　　　　　　　　(map (fn [edge_vals] (str (dot-name k) sep (edge->dot edge_vals))) v)))
+　　　　　　(str (dot-name k) sep (edge->dot v))))
+　　　　edges))))
+
+;;===============
+
+(defn graph->dot [nodes edges dig_flg]
+　(str
+　　(if dig_flg "digraph {\n" "graph {\n")
+　　(nodes->dot nodes)
+　　(edges->dot edges dig_flg)
+　　"}\n"))
+
+;;===============
+
+(defn dot->png [fname thunk]
+　(with-open [fout (clojure.java.io/writer fname)]
+　　(.write fout (thunk)))
+　(clojure.java.shell/sh "bash" "-c" (str "neato -Tpng " fname " -o '" fname ".wizard.png'")))
+
+(defn graph->png [fname nodes edges dig_flg]
+　(dot->png fname (fn [] (graph->dot nodes edges dig_flg))))
+
+;;===============
