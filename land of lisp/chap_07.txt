@@ -15,7 +15,7 @@
 　(if exp
 　　(let [sexp (str exp)]
 　　　(if (> (count sexp) MAX-LABEL-LENGTH)
-　　　　(str (subs sexp 0 (- MAX-LABEL-LENGTH 3)) "...")
+　　　　(str (subs sexp 0 (- MAX-LABEL-LENGTH (.length "..."))) "...")
 　　　　sexp))
 　　""))
 
@@ -25,41 +25,54 @@
 
 ;;===============
 
+;; 補助関数
+
+(defn create-node-line [node info]
+　(str (dot-name node) "[label=\"" (dot-label info) "\"];\n"))
+
+(defn edge->dot [edge flg]
+　(create-node-line (first edge) ((if flg rest (comp list last)) edge)))
+
+(defn create-edge-line [from to dig_flg]
+　(str (dot-name from) (if dig_flg "->" "--") (edge->dot to dig_flg)))
+
+;;===============
+
 (defn nodes->dot [nodes]
 　(apply str
 　　(map
-　　　(fn [[k v]]
-　　　　(str (dot-name k) "[label=\"" (dot-label (str (dot-name k) " " v)) "\"];\n"))
+　　　(fn [[n n_info]] (create-node-line n (str (dot-name n) " " n_info)))
 　　　nodes)))
 
 ;;===============
 
-(defn edge->dot [edge]
-　(str (dot-name (first edge)) "[label=\"" (dot-label (rest edge)) "\"];\n"))
-
 (defn edges->dot [edges]
 　(apply str
 　　(map
-　　　(fn [[k v]]
-　　　　(if (seq? (first v))
-　　　　　(apply str
-　　　　　　(map (fn [edge_vals] (str (dot-name k) "->" (edge->dot edge_vals))) v))
-　　　　　(str (dot-name k) "->" (edge->dot v))))
+　　　(fn [[node_f nodes_t]]
+　　　　(if (seq? (first nodes_t))
+　　　　　(apply str (map (fn [node_t] (create-edge-line node_f node_t true)) nodes_t))
+　　　　　(create-edge-line node_f nodes_t true)))
 　　　edges)))
 
 (defn uedges->dot [edges]
-　(loop [e edges result ()]
-　　(if (empty? e)
-　　　(apply str (reverse result))
-　　　(recur (rest e)
+　(loop [current edges rslt ()]
+　　(if (empty? current)
+　　　(apply str rslt)
+　　　(recur
+　　　　(rest current)
 　　　　(cons
-　　　　　((fn [[k v]]
-　　　　　　(if (seq? (first v))
-　　　　　　　(apply str
-　　　　　　　　(for [vv (reverse v) :when (not (.contains (keys (rest e)) (first vv)))]
-　　　　　　　　　　(str (dot-name k) "--" (edge->dot (rest vv)))))
-　　　　　　　(str (dot-name k) "--" (edge->dot v)))) (first e))
-　　　　　　result)))))
+　　　　　((fn [edge]
+　　　　　　(let [ [node_f nodes_t] (first edge)
+　　　　　　　　　　others (keys (rest edge)) ]
+　　　　　　　(if (seq? (first nodes_t))
+　　　　　　　　(apply str
+　　　　　　　　　(for [node_t nodes_t :when (or (nil? others) (not (.contains others (first node_t))))]
+　　　　　　　　　　(create-edge-line node_f node_t false)))
+
+　　　　　　　　(if (or (nil? others) (not (.contains others (first nodes_t))))
+　　　　　　　　　(create-edge-line node_f nodes_t false))))) current)
+　　　　　rslt)))))
 
 ;;===============
 
@@ -68,7 +81,7 @@
 　　(if flg "digraph {\n" "graph {\n")
 　　(nodes->dot nodes)
 　　((if flg edges->dot uedges->dot) edges)
-　　"}\n")) 
+　　"}\n"))
 
 ;;===============
 
