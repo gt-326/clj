@@ -38,15 +38,22 @@
 
 ;;===============
 
-(defn nodes->dot [nodes]
+(defn nodes->dot_ [nodes]
 　(apply str
 　　(map
 　　　(fn [[n n_info]] (create-node-line n (str (dot-name n) " " n_info)))
 　　　nodes)))
 
+;; [ ↓↓↓↓↓ for の方がキレイに書けるんだな、と。  ↓↓↓↓↓ ]
+
+(defn nodes->dot [nodes]
+　(apply str
+　　(for [[n n_info] nodes]
+　　　(create-node-line n (str (dot-name n) " " n_info)))))
+
 ;;===============
 
-(defn edges->dot [edges]
+(defn edges->dot_ [edges]
 　(apply str
 　　(map
 　　　(fn [[node_f nodes_t]]
@@ -54,6 +61,15 @@
 　　　　　(apply str (map (fn [node_t] (create-edge-line node_f node_t true)) nodes_t))
 　　　　　(create-edge-line node_f nodes_t true)))
 　　　edges)))
+
+;; [ ↓↓↓↓↓ for の方がキレイに書けるんだな、と。  ↓↓↓↓↓ ]
+
+(defn edges->dot [edges]
+　(apply str
+　　(for [[node_f nodes_t] edges]
+　　　(if (seq? (first nodes_t))
+　　　　(apply str (map (fn [node_t] (create-edge-line node_f node_t true)) nodes_t))
+　　　　(create-edge-line node_f nodes_t true)))))
 
 (defn uedges->dot [edges]
 　(loop [current edges rslt ()]
