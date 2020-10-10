@@ -68,7 +68,7 @@
 　(apply str
 　　(for [[node_f nodes_t] edges]
 　　　(if (seq? (first nodes_t))
-　　　　(apply str (map (fn [node_t] (create-edge-line node_f node_t true)) nodes_t))
+　　　　(apply str (for [node_t nodes_t] (create-edge-line node_f node_t true)))
 　　　　(create-edge-line node_f nodes_t true)))))
 
 (defn uedges->dot [edges]
