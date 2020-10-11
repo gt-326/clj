@@ -71,7 +71,18 @@
 　　　　(apply str (for [node_t nodes_t] (create-edge-line node_f node_t true)))
 　　　　(create-edge-line node_f nodes_t true)))))
 
-(defn uedges->dot [edges]
+;; [ ↓↓↓↓↓ 関数「create-edge-line」呼び出し箇所を一本化すると、こうなるけど、どっちがいいんだろう？…うーん。  ↓↓↓↓↓ ]
+
+(defn edges->dot [edges]
+　(apply str
+　　(for [[node_f nodes_t] edges]
+　　　(apply str
+　　　　(for [node_t (if (not (seq? (first nodes_t))) (list nodes_t) nodes_t)]
+　　　　　(create-edge-line node_f node_t true))))))
+
+;;===============
+
+(defn uedges->dot_ [edges]
 　(loop [current edges rslt ()]
 　　(if (empty? current)
 　　　(apply str rslt)
@@ -89,6 +100,23 @@
 　　　　　　　　(if (or (nil? others) (not (.contains others (first nodes_t))))
 　　　　　　　　　(create-edge-line node_f nodes_t false))))) current)
 　　　　　rslt)))))
+     
+;; [ ↓↓↓↓↓ recur 部分をスッキリさせてみた。行数も減らせた（18 -> 14行）。  ↓↓↓↓↓ ]
+
+(defn uedges->dot [edges]
+　(loop [current edges rslt ()]
+　　(if (empty? current)
+　　　(apply str rslt)
+　　　(recur
+　　　　(rest current)
+　　　　(let [ [node_f nodes_t] (first current)
+　　　　　　　　others (keys (rest current)) ]
+　　　　　(cons
+　　　　　　(apply str
+　　　　　　　(for [node_t (if (not (seq? (first nodes_t))) (list nodes_t) nodes_t)
+　　　　　　　　:when (or (nil? others) (not (.contains others (first node_t))))]
+　　　　　　　　　(create-edge-line node_f node_t false)))
+　　　　　　rslt))))))
 
 ;;===============
 
