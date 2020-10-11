@@ -77,7 +77,7 @@
 　(apply str
 　　(for [[node_f nodes_t] edges]
 　　　(apply str
-　　　　(for [node_t (if (not (seq? (first nodes_t))) (list nodes_t) nodes_t)]
+　　　　(for [node_t (if (seq? (first nodes_t)) nodes_t (list nodes_t))]
 　　　　　(create-edge-line node_f node_t true))))))
 
 ;;===============
@@ -113,7 +113,7 @@
 　　　　　　　　others (keys (rest current)) ]
 　　　　　(cons
 　　　　　　(apply str
-　　　　　　　(for [node_t (if (not (seq? (first nodes_t))) (list nodes_t) nodes_t)
+　　　　　　　(for [node_t (if (seq? (first nodes_t)) nodes_t (list nodes_t))
 　　　　　　　　:when (or (nil? others) (not (.contains others (first node_t))))]
 　　　　　　　　　(create-edge-line node_f node_t false)))
 　　　　　　rslt))))))
