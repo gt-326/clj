@@ -13,7 +13,7 @@
 (def CONGESTION-CITY-NODES (atom []))
 (def CONGESTION-CITY-EDGES (atom []))
 (def VISITED-NODES (atom []))
-(def PLAYER-POS (atom []))
+(def PLAYER-POS (atom nil))
 
 ;;===============
 
@@ -237,5 +237,15 @@
 
 (defn charge [pos]
 　(handle-direction pos true))
+
+;;===============
+
+;; [data examples]
+
+;; @CONGESTION-CITY-EDGES
+;; {1 ((4) (11) (18) (27)), 2 ((7) (17) (26)), 3 ((5) (9)), 4 ((1) (12 cops) (17) (23) (24) (30)), 5 ((3) (9) (12) (17 cops)), 6 ((13) (14) (21 cops) (24) (29) (30)), 7 ((2) (18) (21)), 9 ((3) (5) (13)), 10 ((22)), 11 ((1) (12) (25)), 12 ((4 cops) (5) (11) (27)), 13 ((6) (9) (23)), 14 ((6) (26)), 15 ((20) (21)), 16 ((18) (25) (29)), 17 ((2) (4) (5 cops) (28)), 18 ((1) (7) (16) (19 cops)), 19 ((18 cops) (20)), 20 ((15) (19) (25)), 21 ((6 cops) (7) (15) (26 cops)), 22 ((10) (25)), 23 ((4) (13) (29)), 24 ((4) (6)), 25 ((11) (16) (20) (22)), 26 ((2) (14) (21 cops)), 27 ((1) (12)), 28 ((17) (30)), 29 ((6) (16) (23)), 30 ((4) (6) (28))}
+
+;; @CONGESTION-CITY-NODES
+;; {1 (blood!), 2 (blood!), 3 (), 4 (wumpus! sirens!), 5 (blood! sirens!), 6 (blood! lights! sirens!), 7 (lights!), 9 (), 10 (lights!), 11 (blood!), 12 (blood! sirens!), 13 (blood!), 14 (), 15 (grow-worm), 16 (), 17 (blood! sirens!), 18 (blood! sirens!), 19 (sirens!), 20 (lights!), 21 (grow-worm sirens!), 22 (grow-worm), 23 (blood!), 24 (blood!), 25 (lights!), 26 (lights! sirens!), 27 (blood!), 28 (blood!), 29 (blood!), 30 (blood!)}
 
 ;;===============
