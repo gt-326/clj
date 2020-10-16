@@ -1,0 +1,241 @@
+;;===============
+
+;;[ ８章　親父のワンプスとは一味違う：P121〜145 ]
+
+;;===============
+
+(def NODE-NUM 30)
+(def EDGE-NUM 45)
+(def WUMPUS-NUM 1)
+(def WORM-NUM 3)
+(def COP-ODDS 15)
+
+(def CONGESTION-CITY-NODES (atom []))
+(def CONGESTION-CITY-EDGES (atom []))
+(def VISITED-NODES (atom []))
+(def PLAYER-POS (atom []))
+
+;;===============
+
+(defn random-node [num]
+　(inc (. (new java.util.Random) nextInt num)))
+
+(defn edge-pair [a b]
+　(if (not (= a b)) [[a b][b a]]))
+
+(defn make-edge-list [node-num edge-num]
+　(apply concat
+　　(take edge-num
+　　　(filter vector?
+　　　　(repeatedly #(edge-pair (random-node node-num) (random-node node-num)))))))
+
+;;===============
+
+(defn get-connected [edge-list]
+　(set (apply concat edge-list)))
+
+(defn find-islands [nodes connected]
+　(apply list
+　　(clojure.set/difference (set nodes) connected)))
+
+(defn connect-with-bridges [islands connected]
+　(apply concat
+　　(for [island islands]
+　　　(edge-pair
+　　　　island
+　　　　(nth (apply list connected) (rand-int (count connected)))))))
+
+(defn connect-all-islands [nodes edge-list]
+　(let [node-connected-set (get-connected edge-list)]
+　　(concat
+　　　(connect-with-bridges
+　　　　(find-islands nodes node-connected-set)
+　　　　node-connected-set)
+　　　edge-list)))
+
+;;===============
+
+(defn direct-edges [node edge-list]
+　(for [edge edge-list :when (= (first edge) node)] edge))
+
+(defn edges-to-alist [edge-list]
+　(for [node1 (set (map first edge-list))]
+　　(vector node1
+　　　(for [edge (apply sorted-set (apply concat (map rest (direct-edges node1 edge-list)))) ]
+　　　　(list edge)))))
+
+(defn add-cops [edge-alist edges-with-cops]
+　(sort
+　　(for [[node1 node1-edges] edge-alist]
+　　　(vector node1
+　　　　(for [edge node1-edges :let [node2 (first edge)]]
+　　　　　(if (.contains edges-with-cops [node1 node2])
+　　　　　　(list node2 'cops)
+　　　　　　edge))))))
+
+(defn make-city-edges [num-node num-edge cop-odds]
+　(let [ nodes (map inc (range num-node))
+　　　　　edge-list (make-edge-list num-node num-edge)
+　　　　　cops (for [edge (take-nth 2 edge-list) :when (zero? (rand-int cop-odds))] edge) ]
+　　(apply sorted-map
+　　　(apply concat
+　　　　(add-cops
+　　　　　(edges-to-alist edge-list)
+　　　　　(apply concat (for [[n1 n2] cops] (edge-pair n1 n2))))))))
+
+;;===============
+
+;; 補助関数
+
+(defn neighbors [node edge-alist]
+　(map first (get (apply sorted-map (apply concat edge-alist)) node)))
+
+(defn within-one [a b edge-alist]
+　(.contains (neighbors a edge-alist) b))
+
+(defn within-two [a b edge-alist]
+　(or
+　　(within-one a b edge-alist)
+　　(not-every? false?
+　　　(for [x (neighbors a edge-alist)] (within-one x b edge-alist)))))
+
+(defn nodes-wumpus&worms [num-wumpus num-worm num-node]
+　(take (+ num-wumpus num-worm) (set (take 10 (repeatedly #(random-node num-node))))))
+
+;;===============
+
+(defn make-city-node [edge-alist [wumpus & glow-worms]]
+　(apply sorted-map
+　　(apply concat
+　　　(for [edge edge-alist :let [n (first edge)]]
+　　　　(concat
+　　　　　(list n)
+　　　　　(list
+　　　　　　(concat
+　　　　　　　;; wumpus
+　　　　　　　(if (= n wumpus)
+　　　　　　　　'(wumpus)
+　　　　　　　　(if (within-two n wumpus edge-alist) '(blood!) ()))
+
+　　　　　　　;; grow-worm
+　　　　　　　(if (.contains glow-worms n)
+　　　　　　　　'(grow-worm)
+　　　　　　　　(if (not-every? false?
+　　　　　　　　　(for [worm glow-worms] (within-one n worm edge-alist))) '(lights!) ()))
+
+　　　　　　　;; cop
+　　　　　　　(if (not-every? #(= (count %) 1) (edge-alist n)) '(sirens!) ()))))))))
+
+;;===============
+
+(defn draw-city [nodes edges]
+　(graph->png "city" nodes edges false))
+
+(defn find-empty-node [range-n nodes]
+　(let [x (random-node range-n)]
+　　(if (empty? (nodes x)) x (find-empty-node range-n nodes))))
+
+;;===============
+
+;; 補助関数
+
+(defn nodes-visited&within-one [visited edges]
+　(clojure.set/union visited
+　　(apply sorted-set
+　　　(apply concat (for [node visited] (map first (edges node)))))))
+
+;;===============
+
+(defn known-city-nodes [visited edges city-nodes player]
+　(apply clojure.set/union
+　　(for [node (nodes-visited&within-one visited edges)]
+　　　(if (.contains visited node)
+　　　　(let [n (city-nodes node)]
+　　　　　(if (= node player) {node (concat n '(*))} {node n}))
+　　　　{node '(?)}))))
+
+(defn known-city-edges [visited edges]
+　(apply sorted-map
+　　(apply concat
+　　　(for [node visited]
+　　　　(list
+　　　　　node
+　　　　　(for [x (edges node)]
+　　　　　　(if (.contains visited (first x)) x (list (first x)))))))))
+
+(defn draw-known-city [nodes edges]
+　(graph->png "known-city" nodes edges false))
+
+;;===============
+
+;; [funcs unfunctional styled]
+
+(defn new-game []
+　(do
+　　;; init
+　　(reset! CONGESTION-CITY-EDGES
+　　　(make-city-edges NODE-NUM EDGE-NUM COP-ODDS))
+　　(reset! CONGESTION-CITY-NODES
+　　　(make-city-node @CONGESTION-CITY-EDGES
+　　　　(nodes-wumpus&worms WUMPUS-NUM WORM-NUM NODE-NUM)))
+　　(reset! PLAYER-POS
+　　　(find-empty-node NODE-NUM @CONGESTION-CITY-NODES))
+　　(reset! VISITED-NODES (list @PLAYER-POS))
+
+　　;; map-whole
+　　(draw-city @CONGESTION-CITY-NODES @CONGESTION-CITY-EDGES)
+
+　　;; map-partial (visted)
+　　(draw-known-city
+　　　(known-city-nodes
+　　　　@VISITED-NODES @CONGESTION-CITY-EDGES @CONGESTION-CITY-NODES @PLAYER-POS)
+　　　(known-city-edges
+　　　　@VISITED-NODES @CONGESTION-CITY-EDGES))))
+
+(defn handle-direction [pos charging]
+　(let [ edges (@CONGESTION-CITY-EDGES @PLAYER-POS)
+　　　　　edge-to-the-pos (apply concat (for [edge edges] (if (.contains edge pos) edge))) ]
+
+　　(if (not (empty? edge-to-the-pos))
+　　　(handle-new-place edge-to-the-pos pos charging)
+　　　(println "That location does not exist !"))))
+
+(defn handle-new-place [edge pos charging]
+　(let [ nodes (@CONGESTION-CITY-NODES pos)
+　　　　　has-worm (and (.contains nodes 'grow-worm)
+　　　　　　　　　　　(not (.contains @VISITED-NODES pos))) ]
+
+　　;; update-state
+　　(reset! VISITED-NODES (conj @VISITED-NODES pos))
+　　(reset! PLAYER-POS pos)
+
+　　;; map-partial (visted)
+　　(draw-known-city
+　　　(known-city-nodes
+　　　　@VISITED-NODES @CONGESTION-CITY-EDGES @CONGESTION-CITY-NODES @PLAYER-POS)
+　　　(known-city-edges
+　　　　@VISITED-NODES @CONGESTION-CITY-EDGES))
+
+　　(cond
+　　　(.contains edge 'cops)
+　　　　(println "You ran into the cops. Game Over.")
+　　　(.contains nodes 'wumpus)
+　　　　(println (if charging "You found the Wumpus!" "You ran into the Wumpus."))
+　　　charging
+　　　　(println "You wasted your last bullet. Game Over.")
+　　　has-worm
+　　　　(let [new-pos (random-node NODE-NUM)]
+　　　　　(println "You ran into a Glow Worm Gang! You're now at" new-pos)
+　　　　　(recur () new-pos false)))))
+
+;;===============
+
+;; [funcs calls other func unfunctional styled ]
+
+(defn walk [pos]
+　(handle-direction pos false))
+
+(defn charge [pos]
+　(handle-direction pos true))
+
+;;===============
