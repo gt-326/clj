@@ -29,9 +29,18 @@
 
 (defn create-node-line [node info]
 　(str (dot-name node) "[label=\"" (dot-label info) "\"];\n"))
+ 
+(defn edge->dot_ [edge flg]
+　(create-node-line (first edge) ((if flg rest (comp list last)) edge)))
+
+;; [ ↓↓↓↓↓ ８章の内容を出力するために、変更を加えたもの。  ↓↓↓↓↓ ]
 
 (defn edge->dot [edge flg]
-　(create-node-line (first edge) ((if flg rest (comp list last)) edge)))
+　(create-node-line
+　　(first edge)
+　　(if flg
+　　　(rest edge)
+　　　(if (empty? (rest edge)) nil (list (last edge))))))
 
 (defn create-edge-line [from to dig_flg]
 　(str (dot-name from) (if dig_flg "->" "--") (edge->dot to dig_flg)))
@@ -46,10 +55,17 @@
 
 ;; [ ↓↓↓↓↓ for の方がキレイに書けるんだな、と。  ↓↓↓↓↓ ]
 
-(defn nodes->dot [nodes]
+(defn nodes->dot_ [nodes]
 　(apply str
 　　(for [[n n_info] nodes]
 　　　(create-node-line n (str (dot-name n) " " n_info)))))
+
+;; [ ↓↓↓↓↓ ８章の内容を出力するために、変更を加えたもの。  ↓↓↓↓↓ ]
+
+(defn nodes->dot [nodes]
+　(apply str
+　　(for [[n n_info] nodes]
+　　　(create-node-line n (str (dot-name n) " " `(~@n_info))))))
 
 ;;===============
 
@@ -129,10 +145,17 @@
 
 ;;===============
 
-(defn dot->png [fname thunk]
+(defn dot->png_ [fname thunk]
 　(with-open [fout (clojure.java.io/writer fname)]
 　　(.write fout (thunk)))
 　(clojure.java.shell/sh "bash" "-c" (str "neato -Tpng " fname " -o '" fname ".wizard.png'")))
+
+;; [ ↓↓↓↓↓ ８章の内容を出力するために、変更を加えたもの。  ↓↓↓↓↓ ]
+
+(defn dot->png [fname thunk]
+　(with-open [fout (clojure.java.io/writer fname)]
+　　(.write fout (thunk)))
+　(clojure.java.shell/sh "bash" "-c" (str "neato -Tpng " fname " -o '" fname ".png'")))
 
 (defn graph->png [fname nodes edges dig_flg]
 　(dot->png fname (fn [] (graph->dot nodes edges dig_flg))))
