@@ -99,6 +99,8 @@
 　　(not-every? false?
 　　　(for [x (neighbors a edge-alist)] (within-one x b edge-alist)))))
 
+;; ひとつのノードに、wumpus と worm が同居している状態が気になってさ。
+
 (defn nodes-wumpus&worms [num-wumpus num-worm num-node]
 　(take (+ num-wumpus num-worm) (set (take 10 (repeatedly #(random-node num-node))))))
 
