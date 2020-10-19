@@ -133,9 +133,15 @@
 (defn draw-city [nodes edges]
 　(graph->png "city" nodes edges false))
 
-(defn find-empty-node [range-n nodes]
+(defn find-empty-node_ [range-n nodes]
 　(let [x (random-node range-n)]
 　　(if (empty? (nodes x)) x (find-empty-node range-n nodes))))
+
+;; [ ↓↓↓↓↓ 「空のノード」と「該当なし」の区別がついてなかったので、改修。  ↓↓↓↓↓ ]
+
+(defn find-empty-node [range-n nodes]
+　(let [x (random-node range-n) node-state (nodes x)]
+　　(if (or (nil? node-state) (not (empty? node-state))) (find-empty-node range-n nodes) x)))
 
 ;;===============
 
@@ -184,6 +190,9 @@
 　　　(find-empty-node NODE-NUM @CONGESTION-CITY-NODES))
 　　(reset! VISITED-NODES (list @PLAYER-POS))
 
+　　;; guide
+　　(println "now:" (vector @PLAYER-POS) "next:" (vec (apply concat (@CONGESTION-CITY-EDGES @PLAYER-POS))))
+
 　　;; map-whole
 　　(draw-city @CONGESTION-CITY-NODES @CONGESTION-CITY-EDGES)
 
@@ -193,14 +202,6 @@
 　　　　@VISITED-NODES @CONGESTION-CITY-EDGES @CONGESTION-CITY-NODES @PLAYER-POS)
 　　　(known-city-edges
 　　　　@VISITED-NODES @CONGESTION-CITY-EDGES))))
-
-(defn handle-direction [pos charging]
-　(let [ edges (@CONGESTION-CITY-EDGES @PLAYER-POS)
-　　　　　edge-to-the-pos (apply concat (for [edge edges] (if (.contains edge pos) edge))) ]
-
-　　(if (not (empty? edge-to-the-pos))
-　　　(handle-new-place edge-to-the-pos pos charging)
-　　　(println "That location does not exist !"))))
 
 (defn handle-new-place [edge pos charging]
 　(let [ nodes (@CONGESTION-CITY-NODES pos)
@@ -218,6 +219,9 @@
 　　　(known-city-edges
 　　　　@VISITED-NODES @CONGESTION-CITY-EDGES))
 
+　　;; guide
+　　(println "now:" (vector @PLAYER-POS) "next:" (vec (apply concat (@CONGESTION-CITY-EDGES @PLAYER-POS))))
+
 　　(cond
 　　　(.contains edge 'cops)
 　　　　(println "You ran into the cops. Game Over.")
@@ -229,6 +233,14 @@
 　　　　(let [new-pos (random-node NODE-NUM)]
 　　　　　(println "You ran into a Glow Worm Gang! You're now at" new-pos)
 　　　　　(recur () new-pos false)))))
+
+(defn handle-direction [pos charging]
+　(let [ edges (@CONGESTION-CITY-EDGES @PLAYER-POS)
+　　　　　edge-to-the-pos (apply concat (for [edge edges] (if (.contains edge pos) edge))) ]
+
+　　(if (not (empty? edge-to-the-pos))
+　　　(handle-new-place edge-to-the-pos pos charging)
+　　　(println "That location does not exist !"))))
 
 ;;===============
 
