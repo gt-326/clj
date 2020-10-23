@@ -43,6 +43,10 @@
 
 (def ALLOWED-COMMANDS_ '(look walk pickup inventory))
 
+;; [ ↓↓↓↓↓ １７章の内容を実行するために、変更を加えたもの。  ↓↓↓↓↓ ]
+
+(def ALLOWED-COMMANDS (atom '#{look walk pickup inventory}))
+
 (defn game-eval_ [sexp]
 　;; method java.util.Collection#contains()
 　(if (.contains ALLOWED-COMMANDS (first sexp))
