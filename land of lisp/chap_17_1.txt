@@ -31,6 +31,18 @@
 ;;user=> (bench (for [x '(0 2 -8)] (nif x 'pos 'zero 'neg)))
 {:result (zero pos neg), :elapsed 142452}
 
+;; [ ↓↓↓↓↓ クォートの置き方ひとつで、ちと大げさだけどインターフェイスが変わるんだな、と。  ↓↓↓↓↓ ]
+
+(defmacro nif [expr pos zero neg]
+　(let [x# expr]
+　　`(case (if (= 0 ~x#) ~x# (quot ~x# (Math/abs ~x#)))
+　　　1 '~pos
+　　　0 '~zero
+　　　-1 '~neg)))
+
+;;user=> (for [x '(2 0 -8)] (nif x pos zero neg))
+(pos zero neg)
+
 ;;===============
 
 (defn print-tag [n alist closing?]
