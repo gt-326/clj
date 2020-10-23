@@ -1,0 +1,210 @@
+;;===============
+
+;;[ ６章　世界とのインターフェース：P77〜94 ]（変更対応版）
+
+;;===============
+
+;; 補助関数
+(defn tweak-text [lst caps lit]
+　(loop [l lst c caps ll lit result ()]
+　　(if (empty? l)
+　　　(reverse result)
+　　　(let [ item (first l)
+　　　　　　　others (cond
+　　　　　　　　　　　　(= \space item) [c ll (cons item result)]
+　　　　　　　　　　　　(.contains '(\! \? \.) item) [true ll (cons item result)]
+　　　　　　　　　　　　(= \" item) [c (not ll) result]
+　　　　　　　　　　　　ll [nil ll (cons item result)]
+　　　　　　　　　　　　c [nil ll (cons (Character/toUpperCase item) result)]
+　　　　　　　　　　　　:else [nil nil (cons (Character/toLowerCase item) result)]) ]
+　　　　(recur (rest l) (others 0) (others 1) (others 2))))))
+
+(defn reset-game_ []
+　(reset! LOCATION 'living-room)
+　(reset! OBJ-LOCATION '({whiskey living-room}
+　　　　　　　　　　　　　　　{bucket living-room}
+　　　　　　　　　　　　　　　{chain garden}
+　　　　　　　　　　　　　　　{frog garden})))
+
+;; [ ↓↓↓↓↓ １７章の内容を実行するために、変更を加えたもの。  ↓↓↓↓↓ ]
+
+(defn reset-game []
+　(reset! LOCATION 'living-room)
+　(reset! OBJ-LOCATION '({whiskey living-room}
+　　　　　　　　　　　　　　　{bucket living-room}
+　　　　　　　　　　　　　　　{chain garden}
+　　　　　　　　　　　　　　　{frog garden}))
+
+　(reset! ALLOWED-COMMANDS '(look walk pickup inventory))
+　(reset! CHAIN-WELDED false)
+　(reset! BUCKET-FILLED false))
+
+;;===============
+
+(def ALLOWED-COMMANDS_ '(look walk pickup inventory))
+
+(defn game-eval_ [sexp]
+　;; method java.util.Collection#contains()
+　(if (.contains ALLOWED-COMMANDS (first sexp))
+　　(eval sexp)
+　　'(i do not know that command.)))
+
+;; [ ↓↓↓↓↓ １７章の内容を実行するために、変更を加えたもの。  ↓↓↓↓↓ ]
+
+(def ALLOWED-COMMANDS (atom '#{look walk pickup inventory}))
+
+(defn game-eval [sexp]
+　;; method java.util.Collection#contains()
+　(if (.contains @ALLOWED-COMMANDS (first sexp))
+　　(eval sexp)
+　　'(i do not know that command.)))
+
+;;===============
+
+(defn game-read []
+　(let [cmd (read-string (str "(" (read-line) ")"))]
+　　(cons (first cmd) (map #(list 'quote %) (rest cmd)))))
+
+(defn game-print [lst-str]
+　(letfn [(fnc [lst] (clojure.string/replace (clojure.string/trim lst) #"[\(\)]" ""))]
+　　(let [val-str (apply str
+　　　　　　(tweak-text
+　　　　　　　(interleave (fnc (str lst-str)))　;; param1 of tweak-text
+　　　　　　　true　　　　　　　　　　　　　　　　　　;; param2 of tweak-text
+　　　　　　　nil))]　　　　　　　　　　　　　　　　　;; param3 of tweak-text
+
+　　　(println (fnc val-str))
+　　　(clojure.pprint/fresh-line))))
+
+(defn game-repl []
+　(loop [cmd (game-read)]
+　　(if (= (first cmd) 'quit)
+　　　(do
+　　　　(reset-game)
+　　　　'bye!)
+　　　(do
+　　　　(game-print `(~@(game-eval cmd)))
+　　　　(recur (game-read))))))
+
+;;===============
+
+;;[ １７章　ドメイン特化言語：その２（魔法使いのアドベンチャーゲームに新たなコマンドを追加する P365〜374) ]
+
+;;===============
+
+(def CHAIN-WELDED (atom false))
+(def BUCKET-FILLED (atom false))
+
+;;===============
+
+(defn have [obj]
+　(and
+　　(not (empty? (rest (inventory))))
+　　(.contains (rest (inventory)) obj)))
+
+(defn weld-fn [subject object]
+　(if
+　　(and
+　　　(= @LOCATION 'attic)
+　　　(= subject 'chain)
+　　　(= object 'bucket)
+　　　(have 'chain)
+　　　(have 'bucket)
+　　　(not @CHAIN-WELDED))
+　　(do
+　　　(reset! CHAIN-WELDED true)
+　　　'(the chain is now securely welded to the bucket.))
+　　'(you cannot weld like that.)))
+
+(defn dunk-fn [subject object]
+　(if
+　　(and
+　　　(= @LOCATION 'garden)
+　　　(= subject 'bucket)
+　　　(= object 'well)
+　　　(have 'bucket)
+　　　@CHAIN-WELDED)
+　　(do
+　　　(reset! BUCKET-FILLED true)
+　　　'(the bucket is now full of water.))
+　　'(you cannot dunk like that.)))
+
+;;===============
+
+(swap! ALLOWED-COMMANDS conj 'weld-fn)
+(swap! ALLOWED-COMMANDS conj 'dunk-fn)
+
+;;===============
+
+(defmacro game-action_ [cmd subj obj place & body]
+　`(do
+　　(defn ~cmd [~'subject ~'object]
+　　　(if
+　　　　(and
+　　　　　(= ~'@LOCATION '~place)
+　　　　　(= ~'subject '~subj)
+　　　　　(= ~'object '~obj)
+　　　　　(have '~subj))
+　　　　~@body
+　　　　(quote (~'i ~'cannot ~cmd ~'like ~'that.))))
+　　　(swap! ALLOWED-COMMANDS conj '~cmd)))
+
+;; [ ↓↓↓↓↓ 引数名を生成する関数内に限定し、望まない変数補足を回避する。  ↓↓↓↓↓ ]
+
+(defmacro game-action [cmd subj obj place & body]
+　`(do
+　　(defn ~cmd [subject# object#]
+　　　(if
+　　　　(and
+　　　　　(= ~'@LOCATION '~place)
+　　　　　(= subject# '~subj)
+　　　　　(= object# '~obj)
+　　　　　(have '~subj))
+　　　　~@body
+　　　　(quote (~'i ~'cannot ~cmd ~'like ~'that.))))
+　　　(swap! ALLOWED-COMMANDS conj '~cmd)))
+
+;;===============
+;; example
+;;===============
+
+[ コマンド「weld」を追加 ]
+
+;;user=> (game-action
+　weld chain bucket attic
+　(if (not (have 'bucket))
+　　'(you do not have a bucket.)
+　　(if @CHAIN-WELDED
+　　　'(the chain is already welded to the bucket.)
+　　　(do
+　　　　(reset! CHAIN-WELDED true)
+　　　　'(the chain is now securely welded to the bucket.)))))
+  #_=>   #_=>   #_=>   #_=>   #_=>   #_=>   #_=>   #_=> #{walk look weld pickup inventory}
+
+
+[ コマンド「dunk」を追加 ]
+
+;;user=> (game-action
+　dunk bucket well garden
+　(if @CHAIN-WELDED
+　　(do
+　　　(reset! BUCKET-FILLED true)
+　　　'(the bucketis now full of water.))
+　　'(the water level is too low to reach.)))
+  #_=>   #_=>   #_=>   #_=>   #_=>   #_=> #{dunk walk look weld pickup inventory}
+
+
+[ コマンド「splash」を追加 ]
+
+;;user=> (game-action
+　splash bucket wizard living-room
+　(cond
+　　(not @BUCKET-FILLED)
+　　　'(the bucket has nothing in it.)
+　　(have 'frog)
+　　　'(the wizard awakens and sees that you stole his frog. he is so upset he banishes you to the netherworld- you lose! the end.)
+　　:else
+　　　'(the wizard awakens from his slumber and greets you warmly. he hands you the magic low-carb donut- you win! the end.)))
+  #_=>   #_=>   #_=>   #_=>   #_=>   #_=>   #_=>   #_=> #{dunk weld splash walk look weld pickup inventory}
+
+;;===============

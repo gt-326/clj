@@ -1,0 +1,203 @@
+;;===============
+
+;;[ １７章　ドメイン特化言語：その１（svg データ生成 P355〜365) ]
+
+;;===============
+
+;; tools [ 『On Lisp』で使ったやつ ]
+
+(defmacro me [expr]
+　`(pprint (macroexpand '~expr)))
+
+(defmacro me1 [expr]
+　`(pprint (macroexpand-1 '~expr)))
+
+(defmacro bench [expr]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　{:result result# :elapsed (- (System/nanoTime) start#)}))
+
+;;===============
+
+(defmacro nif [expr pos zero neg]
+　(let [x# expr]
+　　`(case (if (= 0 ~x#) ~x# (quot ~x# (Math/abs ~x#)))
+　　　1 ~pos
+　　　0 ~zero
+　　　-1 ~neg)))
+
+;;user=> (for [x '(0 2 -8)] (nif x 'pos 'zero 'neg))
+(zero pos neg)
+
+;;user=> (bench (for [x '(0 2 -8)] (nif x 'pos 'zero 'neg)))
+{:result (zero pos neg), :elapsed 142452}
+
+;;===============
+
+(defn print-tag [n alist closing?]
+　(apply str
+　　(concat
+　　　"<"
+　　　(if closing?
+　　　　(str "/" (.toLowerCase (str n)))
+　　　　(concat
+　　　　　(.toLowerCase (str n))
+　　　　　(for [att alist]
+　　　　　　(format " %s=\"%s\""
+　　　　　　　(.toLowerCase (str (first att)))
+　　　　　　　(first (rest att))))))
+　　　">")))
+
+;;===============
+
+(defmacro tag [name atts & body]
+　`(apply str
+　　(concat
+　　(print-tag
+　　　'~name
+　　　(list ~@(for [[x y] (partition 2 atts)] `(list '~x ~y)))
+　　　false)
+　　~@body
+　　(print-tag '~name nil true))))
+
+;;===============
+
+(defmacro html_h [& body]
+　`(tag ~'html () ~@body))
+
+(defmacro html_b [& body]
+　`(tag ~'body () ~@body))
+
+;;===============
+
+(defmacro svg [width height & body]
+　`(tag ~'svg ( ~'xmlns "http://www.w3.org/2000/svg"
+　　　　　　　　"xmlns:xlink" "http://www.w3.org/1999/xlink" ~'height , ~height ~'width , ~width)
+　　　　　　　　~@body))
+
+(defn brightness [col amt]
+　(for [x col] (min 255 (max 0 (+ x amt)))))
+
+(defn str->svg [fname thunk]
+　(with-open [fout (clojure.java.io/writer (str fname ".svg"))]
+　　(.write fout (thunk))))
+
+;;===============
+
+(defn svg-style-fn [color num]
+　(apply
+　　(fn [a1 a2 a3 a4 a5 a6]
+　　　(format "fill:rgb(%s, %s, %s); stroke:rgb(%s, %s, %s)" a1 a2 a3 a4 a5 a6))
+　　(concat color (brightness color num))))
+
+(defn circle-fn
+　([center radius color] (circle-fn center radius color 0))
+　([center radius color num]
+　　(tag circle
+　　　(cx (first center)
+　　　　cy (first (rest center))
+　　　　r radius
+　　　　style (svg-style-fn color num)))))
+
+;; [ ↓↓↓↓↓ macro で実現したもの（いくらかシンプル、かな？）。  ↓↓↓↓↓ ]
+
+(defmacro svg-style
+　([color] `(svg-style ~color 0))
+　([color num]
+　　`(format "fill:rgb(%s, %s, %s); stroke:rgb(%s, %s, %s)"
+　　~@(concat color (brightness color num)))))
+
+(defmacro circle [center radius color & num]
+　`(tag ~'circle
+　　(~'cx (first '~center)
+　　　~'cy (first (rest '~center))
+　　　~'r ~radius
+　　　~'style (svg-style ~color ~@num))))
+
+;;===============
+
+(defn random-walk [value length]
+　(loop [v value l length rslt (list value)]
+　　(if (zero? l)
+　　　(reverse rslt)
+　　　(recur
+　　　　(if (zero? (. (new java.util.Random) nextInt 2)) (dec v) (inc v))
+　　　　(dec l)
+　　　　(cons v rslt)))))
+
+(defn polygon-fn [points color num]
+　(tag polygon
+　　(style (svg-style-fn color num)
+　　　points
+　　　(apply str (for [[a b] (partition 2 points)] (format "%s,%s " a b))))))
+
+(defn polygen-fn
+　([] (polygen-fn 100))
+　([num]
+　　(let [ y (apply vector (random-walk num 400))
+　　　　　　points (concat (apply concat '(0 200) (for [x (range 401)] (list x (get y x)))) '(400 200))
+　　　　　　color (list
+　　　　　　　(. (new java.util.Random) nextInt 256)
+　　　　　　　(. (new java.util.Random) nextInt 256)
+　　　　　　　(. (new java.util.Random) nextInt 256)) ]
+　　　(polygon-fn points color (- num)))))
+
+;; [ ↓↓↓↓↓ macro で実現したもの（ゴチャゴチャと複雑なだけで、とくにメリットないのかな？）。  ↓↓↓↓↓ ]
+
+(defmacro polygon [points color num]
+　`(tag ~'polygon
+　　(~'style (svg-style ~color ~num)
+　　　~'points
+　　　~(apply str (for [[a b] (partition 2 points)] (format "%s,%s " a b))))
+　　))
+
+(defmacro polygen
+　([] `(polygen 100))
+　([num]
+　　(let [ y (apply vector (random-walk num 400))
+　　　　　　points (concat (apply concat '(0 200) (for [x (range 401)] (list x (get y x)))) '(400 200))
+　　　　　　color (list
+　　　　　　　(. (new java.util.Random) nextInt 256)
+　　　　　　　(. (new java.util.Random) nextInt 256)
+　　　　　　　(. (new java.util.Random) nextInt 256)) ]
+　　　`(polygon ~points ~color ~(- num)))))
+
+;;===============
+;; example
+;;===============
+
+;;user=> (html_h (html_b "hello, World!"))
+"<HTML><BODY>hello, World!</BODY></HTML>"
+
+[ fake-matsuya-logo.svg ] ※ macro版
+
+;;user=> (str->svg
+　"fake-matsuya-logo"
+　(fn [] (svg 450 450
+　　(circle (100 100) 95 (255 0 0) 0)
+　　(circle (65 85) 25 (255 255 0))
+　　(circle (120 126) 35 (255 255 255))
+　　(circle (115 125) 35 (0 0 255)))))
+
+[ fake-matsuya-logo2.svg ] ※ fnc版（クォートがうっとうしいな、と）
+
+;;(str->svg
+　"fake-matsuya-logo2"
+　(fn [] (svg 450 450
+　　(circle-fn '(100 100) 95 '(255 0 0) 0)
+　　(circle-fn '(65 85) 25 '(255 255 0))
+　　(circle-fn '(120 126) 35 '(255 255 255))
+　　(circle-fn '(115 125) 35 '(0 0 255)))))
+
+[ random-walk.svg ] ※ macro版
+
+;;user=> (str->svg
+　"random-walk"
+　(fn [] (svg 2000 2000 (str (polygen 50) (polygen) (polygen 150)))))
+
+[ random-walk2.svg ] ※ fnc版（サークルとちがって、macro版との差はない）
+
+;;user=> (str->svg
+　"random-walk2"
+　(fn [] (svg 2000 2000 (str (polygen-fn 50) (polygen-fn) (polygen-fn 150)))))
+
+;;===============
