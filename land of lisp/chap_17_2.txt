@@ -209,6 +209,6 @@
 　　　'(the wizard awakens and sees that you stole his frog. he is so upset he banishes you to the netherworld- you lose! the end.)
 　　:else
 　　　'(the wizard awakens from his slumber and greets you warmly. he hands you the magic low-carb donut- you win! the end.)))
-  #_=>   #_=>   #_=>   #_=>   #_=>   #_=>   #_=>   #_=> #{dunk weld splash walk look weld pickup inventory}
+  #_=>   #_=>   #_=>   #_=>   #_=>   #_=>   #_=>   #_=> #{dunk splash walk look weld pickup inventory}
 
 ;;===============
