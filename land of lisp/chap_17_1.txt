@@ -142,8 +142,8 @@
 　　　points
 　　　(apply str (for [[a b] (partition 2 points)] (format "%s,%s " a b))))))
 
-(defn poly-gen-fn
-　([] (poly-gen-fn 100))
+(defn genpoly-fn
+　([] (genpoly-fn 100))
 　([num]
 　　(let [ y (apply vector (random-walk num 400))
 　　　　　　points (concat (apply concat '(0 200) (for [x (range 401)] (list x (get y x)))) '(400 200))
@@ -162,8 +162,8 @@
 　　　~(apply str (for [[a b] (partition 2 points)] (format "%s,%s " a b))))
 　　))
 
-(defmacro poly-gen
-　([] `(poly-gen 100))
+(defmacro genpoly
+　([] `(genpoly 100))
 　([num]
 　　(let [ y (apply vector (random-walk num 400))
 　　　　　　points (concat (apply concat '(0 200) (for [x (range 401)] (list x (get y x)))) '(400 200))
@@ -204,12 +204,12 @@
 
 ;;user=> (str->svg
 　"random-walk"
-　(fn [] (svg 2000 2000 (str (poly-gen 50) (poly-gen) (poly-gen 150)))))
+　(fn [] (svg 2000 2000 (str (genpoly 50) (genpoly) (genpoly 150)))))
 
 [ random-walk2.svg ] ※ fnc版（サークルとちがって、macro版との差はない）
 
 ;;user=> (str->svg
 　"random-walk2"
-　(fn [] (svg 2000 2000 (str (poly-gen-fn 50) (poly-gen-fn) (poly-gen-fn 150)))))
+　(fn [] (svg 2000 2000 (str (genpoly-fn 50) (genpoly-fn) (genpoly-fn 150)))))
 
 ;;===============
