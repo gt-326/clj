@@ -61,12 +61,24 @@
 
 ;;===============
 
-(defmacro tag [name atts & body]
+(defmacro tag_ [name atts & body]
 　`(apply str
 　　(concat
 　　(print-tag
 　　　'~name
 　　　(list ~@(for [[x y] (partition 2 atts)] `(list '~x ~y)))
+　　　false)
+　　~@body
+　　(print-tag '~name nil true))))
+
+;; [ ↓↓↓↓↓ gensymするべき？  ↓↓↓↓↓ ]
+
+(defmacro tag [name atts & body]
+　`(apply str
+　　(concat
+　　(print-tag
+　　　'~name
+　　　(list ~@(for [[x# y#] (partition 2 atts)] `(list '~x# ~y#)))
 　　　false)
 　　~@body
 　　(print-tag '~name nil true))))
