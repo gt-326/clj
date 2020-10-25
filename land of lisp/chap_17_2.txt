@@ -153,7 +153,7 @@
 　　　　(quote (~'i ~'cannot ~cmd ~'like ~'that.))))
 　　　(swap! ALLOWED-COMMANDS conj '~cmd)))
 
-;; [ ↓↓↓↓↓ 引数名を生成する関数内に限定し、望まない変数補足を回避する。  ↓↓↓↓↓ ]
+;; [ ↓↓↓↓↓ 引数名を生成する関数内に限定し、望まない変数捕捉を回避する。  ↓↓↓↓↓ ]
 
 (defmacro game-action [cmd subj obj place & body]
 　`(do
