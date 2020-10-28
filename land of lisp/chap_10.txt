@@ -1,0 +1,153 @@
+;;===============
+
+;;[ １０章　loopコマンドによるループ：P189〜214 ]
+
+;;===============
+
+(def WIDTH 30)
+(def HEIGHT 60)
+(def JUNGLE '(45 10 10 10))
+
+(def PLANT-ENERGY 80)
+(def REPRODUCTION-ENERGY 200)
+
+;;===============
+
+(defn random-plant [left top width height]
+　[ (+ left (rand-int width))
+　　(+ top (rand-int height)) ])
+
+(defn make-animal
+　([w h] (make-animal
+　　　　(bit-shift-right w 1)
+　　　　(bit-shift-right h 1)
+　　　　1000
+　　　　0
+　　　　(vec (take 8 (repeatedly #(inc (rand-int 10)))))))
+　([x y e d g] { :x x :y y :energy e :dir d :genes (vec g) }))
+
+(defn turn [animal]
+　(let [x (rand-int (apply + (animal :genes)))]
+　　(assoc animal :dir
+　　　(mod
+　　　　(+ (animal :dir)
+　　　　　　(loop [result 1 [car & rest] (animal :genes) ]
+　　　　　　　(if (nil? car)
+　　　　　　　　result
+　　　　　　　　(if (< (- x car) 0) 0 (recur (+ result (- x car)) rest)))))
+　　　　(count (animal :genes))))))
+
+(defn move [h w animal]
+　(let [ dir (animal :dir) ]
+　　(merge animal
+　　　{ :x (mod (+ (animal :x)
+　　　　　(cond
+　　　　　　(#{2 3 4} dir) 1
+　　　　　　(#{1 5} dir) 0
+　　　　　　:else -1)) w)
+
+　　　　:y (mod (+ (animal :y)
+　　　　　(cond
+　　　　　　(#{0 1 2} dir) -1
+　　　　　　(#{4 5 6} dir) 1
+　　　　　　:else 0)) h)
+
+　　　　:energy (dec (animal :energy)) })))
+
+(defn remove-dead [animals]
+　(for [a animals :when (> (a :energy) 0)] a))
+
+(defn reproduce [animal r-energy]
+　(let [e (animal :energy)]
+　　(if (< e r-energy)
+　　　(list animal)
+　　　(let [ animal-half (assoc animal :energy (bit-shift-right e 1))
+　　　　　　　animal-nu animal-half
+　　　　　　　genes (animal :genes)
+　　　　　　　mutation (rand-int (count genes))
+　　　　　　　val (max 1 (+ (nth genes mutation) (rand-int 3) -1))]
+　　　　(list
+　　　　　animal-half
+　　　　　(assoc animal-nu :genes (assoc genes mutation val)))))))
+
+(defn eat [flg animal energy]
+　(if flg
+　　(assoc animal :energy (+ energy (animal :energy)))
+　　animal))
+
+(defn create-map [h w animals plants]
+　(cons "\n"
+　　(for [line (for [y (range h)]
+　　　(apply str
+　　　　(apply concat
+　　　　　(for [x (range w)]
+　　　　　　(cond
+　　　　　　　(some true? (for [a animals] (and (= (a :x) x) (= (a :y) y)))) "M"
+　　　　　　　(plants [x y]) "*"
+　　　　　　　:else " ")))))]
+　　(str "|" line "|\n"))))
+
+;;===============
+
+;; [funcs unfunctional styled]
+
+(defn add-plants [plants jungle w h]
+　(do
+　　;; 副作用
+　　(swap! plants conj (apply random-plant jungle))
+　　(swap! plants conj (random-plant 0 0 w h))))
+
+(defn update-world [animals plants]
+　(do
+　　;; 副作用
+　　(reset! animals (apply concat
+　　　(for [a0 (remove-dead @animals)
+　　　　:let [ a1 (move HEIGHT WIDTH (turn a0))
+　　　　　　　　pos [(a1 :x) (a1 :y)]
+　　　　　　　　flg (contains? @plants pos) ]]
+　　　　(do
+　　　　　;; 副作用
+　　　　　(if flg (swap! plants disj pos))
+　　　　　(reproduce (eat flg a1 PLANT-ENERGY) REPRODUCTION-ENERGY)))))
+　　(add-plants plants JUNGLE WIDTH HEIGHT)))
+
+(defn draw-world [h w animals plants]
+　(let [lines (create-map h w animals plants)]
+　　;; 副作用
+　　(apply print (apply str lines))))
+
+;;===============
+
+;; [lexical closure]
+
+(def evo
+　;; レキシカル変数
+　(let [ ANIMALS (atom (list (make-animal WIDTH HEIGHT)))
+　　　　　PLANTS (atom #{}) ]
+
+　　#(loop [cmd (read-line)]
+　　　(if (= cmd "quit")
+　　　　'bye!
+　　　　(do
+　　　　　(cond
+　　　　　　(= cmd "init")
+　　　　　　　(do
+　　　　　　　　(reset! ANIMALS (list (make-animal WIDTH HEIGHT)))
+　　　　　　　　(reset! PLANTS #{}))
+
+　　　　　　(re-find #"\d+" cmd)
+　　　　　　　(apply print
+　　　　　　　　(apply concat　　　　　　
+　　　　　　　　　(for [num (range (Integer. (re-find #"\d+" cmd)))]
+　　　　　　　　　　(do
+　　　　　　　　　　　(update-world ANIMALS PLANTS)
+　　　　　　　　　　　(if (zero? (mod num 10)) "." "")))))
+
+　　　　　　:else
+　　　　　　　(update-world ANIMALS PLANTS))
+
+　　　　　;; 描画
+　　　　　(draw-world HEIGHT WIDTH (set @ANIMALS) @PLANTS)
+　　　　　(recur (read-line)))))))
+
+;;===============
