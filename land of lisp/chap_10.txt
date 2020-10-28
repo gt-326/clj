@@ -141,7 +141,7 @@
 　　　　　　　　　(for [num (range (Integer. (re-find #"\d+" cmd)))]
 　　　　　　　　　　(do
 　　　　　　　　　　　(update-world ANIMALS PLANTS)
-　　　　　　　　　　　(if (zero? (mod num 10)) "." "")))))
+　　　　　　　　　　　(if (zero? (mod num 1000)) "." "")))))
 
 　　　　　　:else
 　　　　　　　(update-world ANIMALS PLANTS))
