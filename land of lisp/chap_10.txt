@@ -139,7 +139,7 @@
 　　　　　　　(apply print
 　　　　　　　　(apply concat
 　　　　　　　　　(for [num (range (Integer. (re-find #"\d+" cmd)))] num)
-　　　　　　　　　;;(dotimes [num (Integer. (re-find #"\d+" cmd))]　;; 最適化するたつもりだったけれど、データ量が大きくなるほど動作が重くなるみたい…。
+　　　　　　　　　;;(dotimes [num (Integer. (re-find #"\d+" cmd))]　;; 最適化するつもりだったけれど、データ量が大きくなるほど動作が重くなるみたい…。
 　　　　　　　　　　(do
 　　　　　　　　　　　(update-world ANIMALS PLANTS)
 　　　　　　　　　　　(if (zero? (mod num 1000)) "." "")))))
