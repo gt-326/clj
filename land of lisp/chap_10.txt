@@ -85,7 +85,7 @@
 　　　　　　　(some true? (for [a animals] (and (= (a :x) x) (= (a :y) y)))) "M"
 　　　　　　　(plants [x y]) "*"
 　　　　　　　:else " ")))))]
-　　(str "|" line "|\n"))))
+　　　(str "|" line "|\n"))))
 
 ;;===============
 
