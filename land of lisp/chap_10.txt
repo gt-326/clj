@@ -4,9 +4,13 @@
 
 ;;===============
 
-(def WIDTH 30)
-(def HEIGHT 60)
+(def WIDTH 60)
+(def HEIGHT 20)
 (def JUNGLE '(45 10 10 10))
+
+(def INIT-MAP
+　(vec (for [y (range HEIGHT)]
+　　(vec (for [x (range WIDTH)] " ")))))
 
 (def PLANT-ENERGY 80)
 (def REPRODUCTION-ENERGY 200)
@@ -14,8 +18,8 @@
 ;;===============
 
 (defn random-plant [left top width height]
-　[ (+ left (rand-int width))
-　　(+ top (rand-int height)) ])
+　[ (mod (+ top (rand-int height)) height)
+　　(mod (+ left (rand-int width)) width) ])
 
 (defn make-animal
 　([w h] (make-animal
@@ -75,21 +79,22 @@
 　　(assoc animal :energy (+ energy (animal :energy)))
 　　animal))
 
-(defn create-map [h w animals plants]
-　(cons "\n"
-　　(for [line (for [y (range h)]
+;;===============
+
+;; [UI (CLI)]
+
+(defn draw-world [w data]
+　(let [bar (list (apply str (concat '("\n") (for [x (range (+ w 2))] "-"))))]
+　　(apply println
 　　　(apply str
-　　　　(apply concat
-　　　　　(for [x (range w)]
-　　　　　　(cond
-　　　　　　　(some true? (for [a animals] (and (= (a :x) x) (= (a :y) y)))) "M"
-　　　　　　　(plants [x y]) "*"
-　　　　　　　:else " ")))))]
-　　　(str "|" line "|\n"))))
+　　　　(apply str
+　　　　　(concat
+　　　　　　bar (for [[& line] data] (str "\n|" (apply str line) "|"))
+　　　　　　bar '("\n")))))))
 
 ;;===============
 
-;; [funcs unfunctional styled]
+;; [mutable model]
 
 (defn add-plants [plants jungle w h]
 　(do
@@ -103,52 +108,55 @@
 　　(reset! animals (apply concat
 　　　(for [a0 (remove-dead @animals)
 　　　　:let [ a1 (move HEIGHT WIDTH (turn a0))
-　　　　　　　　pos [(a1 :x) (a1 :y)]
+　　　　　　　　pos [(a1 :y) (a1 :x)]
 　　　　　　　　flg (contains? @plants pos) ]]
 　　　　(do
 　　　　　;; 副作用
 　　　　　(if flg (swap! plants disj pos))
+　　　　　;; 動物の増殖
 　　　　　(reproduce (eat flg a1 PLANT-ENERGY) REPRODUCTION-ENERGY)))))
+　　;; 牧草の増殖
 　　(add-plants plants JUNGLE WIDTH HEIGHT)))
 
-(defn draw-world [h w animals plants]
-　(let [lines (create-map h w animals plants)]
+(defn create-map-data [init animals plants]
+　(let [data (atom init)]
 　　;; 副作用
-　　(apply print (apply str lines))))
+　　(doseq [a animals] (swap! data assoc-in [(a :y) (a :x)] "M"))
+　　(doseq [p plants] (swap! data assoc-in p "*"))
+　　@data))
 
 ;;===============
 
 ;; [lexical closure]
 
 (def evo
-　;; レキシカル変数
 　(let [ ANIMALS (atom (list (make-animal WIDTH HEIGHT)))
 　　　　　PLANTS (atom #{}) ]
-
 　　#(loop [cmd (read-line)]
 　　　(if (= cmd "quit")
 　　　　'bye!
 　　　　(do
 　　　　　(cond
+　　　　　　(= cmd "animals") (println "ANIMALS: " @ANIMALS)
+　　　　　　(= cmd "plants") (println "PLANTS: " @PLANTS)
 　　　　　　(= cmd "init")
 　　　　　　　(do
 　　　　　　　　(reset! ANIMALS (list (make-animal WIDTH HEIGHT)))
-　　　　　　　　(reset! PLANTS #{}))
+　　　　　　　　(reset! PLANTS #{})
+　　　　　　　　(println (str "ANIMALS: " @ANIMALS "\n" "PLANTS: " @PLANTS)))
 
 　　　　　　(re-find #"\d+" cmd)
-　　　　　　　(apply print
-　　　　　　　　(apply concat
-　　　　　　　　　(for [num (range (Integer. (re-find #"\d+" cmd)))] num)
-　　　　　　　　　;;(dotimes [num (Integer. (re-find #"\d+" cmd))]　;; 最適化するつもりだったけれど、データ量が大きくなるほど動作が重くなるみたい…。
-　　　　　　　　　　(do
-　　　　　　　　　　　(update-world ANIMALS PLANTS)
-　　　　　　　　　　　(if (zero? (mod num 1000)) "." "")))))
+　　　　　　　(do
+　　　　　　　　(doseq [num (range (Long/parseLong (re-find #"\d+" cmd)))]
+　　　　　　　　　(do
+　　　　　　　　　　(update-world ANIMALS PLANTS)
+　　　　　　　　　　(if (zero? (mod num 1000)) (println "."))))
+　　　　　　　　(draw-world WIDTH (create-map-data INIT-MAP (set @ANIMALS) @PLANTS)))
 
 　　　　　　:else
-　　　　　　　(update-world ANIMALS PLANTS))
-
-　　　　　;; 描画
-　　　　　(draw-world HEIGHT WIDTH (set @ANIMALS) @PLANTS)
+　　　　　　　(do
+　　　　　　　　(update-world ANIMALS PLANTS)
+　　　　　　　　(draw-world WIDTH (create-map-data INIT-MAP (set @ANIMALS) @PLANTS))))
 　　　　　(recur (read-line)))))))
 
 ;;===============
