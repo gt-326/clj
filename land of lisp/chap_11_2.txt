@@ -1,0 +1,93 @@
+;---
+; Conrad Barski, M.D. "Land of Lisp"
+;  published by no starch press. http://landoflisp.com/
+;---
+
+(defun robots ()
+
+　;; 大きなループ：MAIN
+　(loop named main
+
+　　　　　;; 移動用キーたち（入力文字と値の組み合わせ。'(s . 0) はわざわざ置いていない）
+　　　　　with directions = '((q . -65) (w . -64) (e . -63) (a . -1)
+                            (d .   1) (z .  63) (x .  64) (c . 65))
+
+　　　　　;; プレーヤーの位置（544番目のセルを設定）
+　　　　　for pos = 544
+
+　　　　　;; 入力処理（入力キー's'は、無効なのでは？）
+　　　　　then (progn (format t "~%qwe/asd/zxc to move, (t)eleport, (l)eave:")
+                    (force-output)
+                    (let* ((c (read))　　　　　　　　　　　　　　　　　;; 入力キー取得
+                           (d (assoc c directions)))　　　　　　　　;; 該当する「移動用キー」があれば、取得する
+
+　　　　　　　　　　　　　　　　　(cond
+　　　　　　　　　　　　　　　　　　(d (+ pos (cdr d)))　　　　　　　　　　　;; 「d」が有効：現在位置と「移動用キー」の値を足した値を返す
+　　　　　　　　　　　　　　　　　　((eq 't c) (random 1024))　　　　　　　;; キー't'：テレポート（移動先のモンスターの有無を確認せず）
+　　　　　　　　　　　　　　　　　　((eq 'l c) (return-from main 'bye))　;; キー'l'：終了条件（大きなループ：MAINを抜ける）
+　　　　　　　　　　　　　　　　　　(t pos))))　　　　　　　　　　　　　　　　;; 移動には無効なキー入力
+
+　　　　　;; モンスター生成：１０個
+　　　　　for monsters = (loop repeat 10 collect (random 1024))
+
+　　　　　;; モンスターを更新（データ①を生成）：モンスターの数（10）X directions（各モンスターの移動先）分ループ処理
+　　　　　then (loop for mpos in monsters
+　　　　　　　　　　　;; データ①
+　　　　　　　　　　　collect (if (> (count mpos monsters) 1)
+　　　　　　　　　　　　　　　　　;; 【１マスに、モンスター：複数個】（クラッシュして動かないスクラップである）
+
+　　　　　　　　　　　　　　　　　　;; 現在位置をデータ①に追加するだけ。
+　　　　　　　　　　　　　　　　　　mpos
+
+　　　　　　　　　　　　　　　　　;; 【１マスに、モンスター：１個】（新しい移動先を算出する）
+
+　　　　　　　　　　　　　　　　　　;; （ソート済みのデータ②から、）先頭のcdr部を取得し、データ①に追加する
+　　　　　　　　　　　　　　　　　　(cdar
+　　　　　　　　　　　　　　　　　　　;; データ②を、「car」部分（プレーヤーまでの「マンハッタン距離」）の値を条件に「<」の順序で並べ換える
+　　　　　　　　　　　　　　　　　　　(sort
+
+　　　　　　　　　　　　　　　　　　　　;; 全方位分、１マス移動した位置を算出する
+　　　　　　　　　　　　　　　　　　　　(loop for (k . d) in directions
+
+　　　　　　　　　　　　　　　　　　　　　　　　;; 値を更新（現在位置と「移動用キー」の値を足した値）
+　　　　　　　　　　　　　　　　　　　　　　　　for new-mpos = (+ mpos d)
+
+　　　　　　　　　　　　　　　　　　　　　　　　;; データ②
+　　　　　　　　　　　　　　　　　　　　　　　　collect
+　　　　　　　　　　　　　　　　　　　　　　　　　;; ドット対を生成している（car部:プレーヤーまでの「マンハッタン距離」（①+②）、cdr部:更新値）
+　　　　　　　　　　　　　　　　　　　　　　　　　(cons
+　　　　　　　　　　　　　　　　　　　　　　　　　　(+
+　　　　　　　　　　　　　　　　　　　　　　　　　　　;; ①
+　　　　　　　　　　　　　　　　　　　　　　　　　　　;; 割ったあまり同志を引いて、絶対値を計算している
+　　　　　　　　　　　　　　　　　　　　　　　　　　　(abs (- (mod new-mpos 64) (mod pos 64)))
+
+　　　　　　　　　　　　　　　　　　　　　　　　　　　;; ②
+　　　　　　　　　　　　　　　　　　　　　　　　　　　;; 値を二進数にする。
+　　　　　　　　　　　　　　　　　　　　　　　　　　　;; つぎに、「-6」分（右に６つビット）シフトした値同志を引いて、絶対値を計算している②
+　　　　　　　　　　　　　　　　　　　　　　　　　　　(abs (- (ash new-mpos -6) (ash pos -6))))
+　　　　　　　　　　　　　　　　　　　　　　　　　　new-mpos))
+
+　　　　　　　　　　　　　　　　　　　　'<
+　　　　　　　　　　　　　　　　　　　　:key #'car))))
+
+　　　　　;; 終了条件（モンスターたちの位置すべてに、複数のモンスターが同居している場合。すべてスクラップ）
+　　　　　when (loop for mpos in monsters always (> (count mpos monsters) 1))
+　　　　　return 'player-wins
+
+　　　　　;; 表示処理用ループ（1024マス分の処理。65文字目で折り返す）
+　　　　　do (format t "~%|~{~<|~%|~,65:;~A~>~}|"
+                   (loop for p
+                         below 1024
+                         collect (cond
+                         　((member p monsters)　;; モンスターが居るマスの場合
+　　　　　　　　　　　　　　　　　(cond
+　　　　　　　　　　　　　　　　　　;; さらに、条件分岐
+　　　　　　　　　　　　　　　　　　((= p pos) (return-from main 'player-loses))　;; 「負け」。大きなループ：MAIN を抜ける
+　　　　　　　　　　　　　　　　　　((> (count p monsters) 1) #\#)　　　　　　　　　;; スクラップの場合：「#」を設定
+　　　　　　　　　　　　　　　　　　(t #\A)))　　　　　　　　　　　　　　　　　　　　　　;; 稼働中のモンスターの場合：「A」を設定
+
+　　　　　　　　　　　　　　　　;; プレーヤーが居るマスの場合：「@」を設定
+　　　　　　　　　　　　　　　　((= p pos) #\@)
+
+　　　　　　　　　　　　　　　　;; 上記以外：「 」を設定
+　　　　　　　　　　　　　　　　(t #\ ))))))
