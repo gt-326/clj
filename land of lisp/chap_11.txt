@@ -1,0 +1,347 @@
+;;===============
+
+;;[ １１章　format 関数でテキストを表示する：P215〜229 ]
+
+;;===============
+
+(use 'clojure.pprint)
+
+;; true : コンソールに出力
+user=> (cl-format true "Add onion rings for only ~$ dollars more!" 1.5)
+Add onion rings for only 1.50 dollars more!nil
+
+;; false : 文字列にする
+user=> (cl-format false "Add onion rings for only ~$ dollars more!" 1.5)
+"Add onion rings for only 1.50 dollars more!"
+
+;;===============
+;; reverse
+;;===============
+
+;; ture
+user=> (reverse (cl-format true "Add onion rings for only ~$ dollars more!" 1.5))
+Add onion rings for only 1.50 dollars more!()
+
+;; false
+user=> (reverse '(cl-format false "Add onion rings for only ~$ dollars more!" 1.5))
+(1.5 "Add onion rings for only ~$ dollars more!" false cl-format)
+
+user=> (reverse (cl-format false "Add onion rings for only ~$ dollars more!" 1.5))
+(\! \e \r \o \m \space \s \r \a \l \l \o \d \space \0 \5 \. \1 \space \y \l \n \o \space \r \o \f \space \s \g \n \i \r \space \n \o \i \n \o \space \d \d \A)
+
+user=> (apply str (reverse (cl-format false "Add onion rings for only ~$ dollars more!" 1.5)))
+"!erom srallod 05.1 ylno rof sgnir noino ddA"
+
+user=> (println (apply str (reverse (cl-format false "Add onion rings for only ~$ dollars more!" 1.5))))
+!erom srallod 05.1 ylno rof sgnir noino ddA
+nil
+
+;;===============
+;; ~a、~s
+;;===============
+
+;; クォートなし、左寄せ、右寄せ
+
+user=> (cl-format false "I am printing ~a in the middle of this sentence." "foo")
+"I am printing foo in the middle of this sentence."
+
+user=> (cl-format false "I am printing ~10a within ten spaces of room." "foo")
+"I am printing foo        within ten spaces of room."
+              -1234567890-
+
+user=> (cl-format false "I am printing ~10@a within ten spaces of room." "foo")
+"I am printing        foo within ten spaces of room."
+              -1234567890-
+
+
+;; クォートあり（※「\"」で、クォート１文字）、左寄せ、右寄せ
+
+user=> (cl-format false "I am printing ~s in the middle of this sentence." "foo")
+"I am printing \"foo\" in the middle of this sentence."
+
+user=> (cl-format false "I am printing ~10s within ten spaces of room." "foo")
+"I am printing \"foo\"      within ten spaces of room."
+              - 1234 567890-
+
+user=> (cl-format false "I am printing ~10@s within ten spaces of room." "foo")
+"I am printing      \"foo\" within ten spaces of room."
+              -12345 6789 0-
+
+;;===============
+;; こまごま
+;;===============
+
+;; 3 つずつ空白を足す、を 10 文字内で繰り返す（結果、９つの空白を加えて１２文字になってる）。
+
+user=> (cl-format false "I am printing ~10,3a within ten (or more) spaces of room." "foo")
+"I am printing foo          within ten (or more) spaces of room."
+              -123456789012-
+
+;; 値のうしろに、常に 4 文字足す（結果、７文字になってる）。
+
+user=> (cl-format false "I am printing ~,,4a in the middle of this sentence." "foo")
+"I am printing foo     in the middle of this sentence."
+              -1234567-
+
+;; 指定文字を、文字数分足す（「!」を４回）
+
+user=> (cl-format false "The word ~,,4'!a feels very important." "foo")
+"The word foo!!!! feels very important."
+
+user=> (cl-format false "The word ~,,4'!@a feels very important." "foo")
+"The word !!!!foo feels very important."
+
+;;===============
+;; 整数
+;;===============
+
+;; 10、16進数
+
+user=> (cl-format false "The number ~d in hexadecima is ~x" 1000 1000)
+"The number 1000 in hexadecima is 3e8"
+
+;; 10、2進数（リストへの適用方法など）
+
+user=> (take 10 (repeat 1000))
+(1000 1000 1000 1000 1000 1000 1000 1000 1000 1000)
+
+user=> (apply cl-format false "The number ~d in hexadecima is ~b" (repeat 1000))
+"The number 1000 in hexadecima is 1111101000"
+
+;; カンマ
+
+user=> (cl-format false "Numbers with commas in them are ~:d times better." 1000000)
+"Numbers with commas in them are 1,000,000 times better."
+
+;; 符号表示強制
+
+user=> (cl-format false "Always print the sign ~10@d ." 1000000)
+"Always print the sign   +1000000 ."
+                      -1234567890-
+
+;; 右寄せ
+
+user=> (cl-format false "I am printing ~10d within ten spaces of room." 1000000)
+"I am printing    1000000 within ten spaces of room."
+              -1234567890-
+
+;; 指定文字による文字詰め
+
+user=> (cl-format false "I am printing ~10,'!d within ten exclamations of room." 1000000)
+"I am printing !!!1000000 within ten exclamations of room."
+              -1234567890-
+
+;; 左寄せ（※フォーマット指定が必要）
+
+user=> (cl-format false "I am printing ~10@<~:d~> within ten spaces of room." 1000000)
+"I am printing 1,000,000  within ten spaces of room."
+              -1234567890-
+
+;;===============
+;; 浮動小数点数
+;;===============
+
+user=> (cl-format false "PI can be stimated as ~4f" 3.14593)
+"PI can be stimated as 3.15"
+
+user=> (cl-format false "PI can be stimated as ~,4f" Math/PI)
+"PI can be stimated as 3.1416"
+
+user=> (cl-format false "Percentages are ~,,2f percent better than fractions" 0.77)
+"Percentages are 77.0 percent better than fractions"
+
+user=> (cl-format false "I wish I had ~$ dollars in my bank account." 1000000.2)
+"I wish I had 1000000.20 dollars in my bank account."
+
+;;===============
+;; 複数行出力
+;;===============
+
+user=> (do (print 22) (fresh-line) (print 23))
+22
+23nil
+
+;; Common Lisp とは違って、指定個数改行されるみたい
+
+user=> (do (print 22) (fresh-line) (fresh-line) (print 23))
+22
+
+23nil
+
+;; ~%
+
+user=> (do (cl-format true "this is on one line ~%")(cl-format true "~%this is on another line"))
+this is on one line
+
+this is on another linenil
+
+;; ~&
+
+user=> (do (cl-format true "this is on one line ~&")(cl-format true "~&this is on another line"))
+this is on one line
+this is on another linenil
+
+user=> (cl-format true "this will print ~5%on two lines spread far apart")
+this will print
+
+
+
+
+on two lines spread far apartnil
+
+user=> (cl-format false "this will print ~5%on two lines spread far apart")
+"this will print \n\n\n\n\non two lines spread far apart"
+
+;;===============
+;; テキスト揃え
+;;===============
+
+(defn r-animal []
+　(["dog" "tick" "tiger" "walrus" "kangaroo"] (rand-int 5)))
+
+(take 10 (partision 3 (repeatedly #(r-animal))))
+(take 10 (repeatedly #(cl-format true "~5t~a ~15t~a ~25t~a~%" (r-animal) (r-animal) (r-animal))))
+(map #(apply cl-format true "~5t~a ~15t~a ~25t~a~%" %) (take 10 (partition 3 (repeatedly #(r-animal)))))
+
+;; true
+user=> (map #(apply cl-format true "~5t~a ~15t~a ~25t~a~%" %) (take 10 (partition 3 (repeatedly #(r-animal)))))
+     walrus     dog       kangaroo
+     tiger      kangaroo  tiger
+     tiger      dog       dog
+     dog        tick      dog
+     tick       tick      kangaroo
+     kangaroo   walrus    tick
+     tiger      tiger     kangaroo
+     walrus     dog       tiger
+     tick       dog       dog
+     walrus     tiger     dog
+(nil nil nil nil nil nil nil nil nil nil)
+
+user=> (map #(apply cl-format true "~30<~a~;~a~;~a~>~%" %) (take 10 (partition 3 (repeatedly #(r-animal)))))
+dog       walrus      kangaroo
+tick        walrus        tick
+tiger         tick         dog
+tick        walrus       tiger
+dog        walrus        tiger
+dog         tiger        tiger
+tick       kangaroo       tick
+dog        walrus       walrus
+tiger         tick        tick
+kangaroo      walrus      tick
+(nil nil nil nil nil nil nil nil nil nil)
+
+user=> (map #(cl-format true "~30:@<~a~>~%" %) (take 10 (repeatedly #(r-animal))))
+              dog
+              dog
+           kangaroo
+              dog
+           kangaroo
+              dog
+              dog
+              dog
+             tick
+            walrus
+(nil nil nil nil nil nil nil nil nil nil)
+
+user=> (map #(apply cl-format true "~10:@<~a~>~10:@<~a~>~10:@<~a~>~%" %) (take 10 (partition 3 (repeatedly #(r-animal)))))
+   tick     walrus     tick
+   tiger    walrus     tick
+  walrus    walrus     tick
+   tiger      dog      tick
+    dog     walrus     tick
+    dog      tiger   kangaroo
+   tiger   kangaroo    tiger
+ kangaroo    tiger   kangaroo
+    dog      tick    kangaroo
+   tick       dog      tick
+(nil nil nil nil nil nil nil nil nil nil)
+
+
+;; false
+user=> (apply print (map #(apply cl-format false "~5t~a ~15t~a ~25t~a~%" %) (take 10 (partition 3 (repeatedly #(r-animal))))))
+     kangaroo   dog       tiger
+      dog        dog       dog
+      tiger      walrus    kangaroo
+      walrus     tiger     dog
+      tick       kangaroo  walrus
+      kangaroo   walrus    tick
+      kangaroo   kangaroo  tiger
+      walrus     tick      tiger
+      kangaroo   dog       dog
+      kangaroo   walrus    tick
+nil
+
+user=> (apply print (map #(apply cl-format false "~30<~a~;~a~;~a~>~%" %) (take 10 (partition 3 (repeatedly #(r-animal))))))
+tick        tiger        tiger
+ dog          dog          tick
+ walrus      tick      kangaroo
+ kangaroo       dog       tiger
+ walrus      kangaroo      tick
+ tiger         dog         tick
+ tiger       tick      kangaroo
+ tick         dog         tiger
+ tick        tick        walrus
+ kangaroo      walrus     tiger
+nil
+
+user=> (apply print (map #(cl-format false "~30:@<~a~>~%" %) (take 10 (repeatedly #(r-animal)))))
+            walrus
+             walrus
+              tick
+               dog
+              tick
+             walrus
+             walrus
+              tiger
+             walrus
+               dog
+nil
+
+user=> (apply print (map #(apply cl-format false "~10:@<~a~>~10:@<~a~>~10:@<~a~>~%" %) (take 10 (partition 3 (repeatedly #(r-animal))))))
+   tiger    walrus      dog
+     dog      tick    kangaroo
+   walrus     tiger    walrus
+   walrus   kangaroo    tick
+    tick      tiger     tiger
+    tiger    walrus     tiger
+    tick       dog      tiger
+    tiger   kangaroo   walrus
+  kangaroo     dog     walrus
+    tick     walrus      dog
+nil
+
+;;===============
+;; 繰り返し制御
+;;===============
+
+(def ANIMALS (take 10 (repeatedly #(r-animal))))
+
+user=> ANIMALS
+("tick" "tick" "kangaroo" "tiger" "tiger" "walrus" "kangaroo" "walrus" "kangaroo" "kangaroo")
+
+user=> (cl-format true "~{I see a ~a! ~}" ANIMALS)
+I see a tick! I see a tick! I see a kangaroo! I see a tiger! I see a tiger! I see a walrus! I see a kangaroo! I see a walrus! I see a kangaroo! I see a kangaroo! nil
+
+user=> (cl-format true "~{I see a ~a... or was it a ~a?~%~}" ANIMALS)
+I see a tick... or was it a tick?
+I see a kangaroo... or was it a tiger?
+I see a tiger... or was it a walrus?
+I see a kangaroo... or was it a walrus?
+I see a kangaroo... or was it a kangaroo?
+nil
+
+;;===============
+;; 整形トリック
+;;===============
+
+user=> (cl-format true "|~{~<|~%|~,40:; ~2d ~>~}|" (range 100))
+|  0   1   2   3   4   5   6   7   8   9 |
+| 10  11  12  13  14  15  16  17  18  19 |
+| 20  21  22  23  24  25  26  27  28  29 |
+| 30  31  32  33  34  35  36  37  38  39 |
+| 40  41  42  43  44  45  46  47  48  49 |
+| 50  51  52  53  54  55  56  57  58  59 |
+| 60  61  62  63  64  65  66  67  68  69 |
+| 70  71  72  73  74  75  76  77  78  79 |
+| 80  81  82  83  84  85  86  87  88  89 |
+| 90  91  92  93  94  95  96  97  98  99 |nil
