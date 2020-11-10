@@ -1,0 +1,115 @@
+;;===============
+
+;;[ １２章　ストリーム：P231〜245 ]
+
+;;===============
+
+user=> (with-open [fout (clojure.java.io/writer "hello.txt" :append true)]
+　(.write fout (str "my data!")))
+  #_=> nil
+
+user=> (with-open [fin (clojure.java.io/reader "animal-noises.txt")]
+　(doseq [line (line-seq fin)] (println line)))
+  #_=> {:dog woof, :cat meow}{:dog woof, :cat meow}
+nil
+
+==============================================
+
+(import '(java.io InputStreamReader BufferedReader BufferedWriter OutputStreamWriter)
+　　　　　'(java.net ServerSocket))
+
+;; ソケット
+(def my-socket (ServerSocket. (Integer. "8888")))
+
+;; ストリーム
+(def my-stream (. my-socket accept))
+
+(def r (BufferedReader. (InputStreamReader. (.getInputStream my-stream))))
+(def w (BufferedWriter. (OutputStreamWriter. (.getOutputStream my-stream))))
+
+(defn s-write
+　[w msg]
+　　(let [line (str "[server says]:" msg "\r\n")]
+　　　(. w write line)
+　　　(.flush w)
+　　　msg))
+
+(defn s-read
+　[r] (str "[client says]:"(. r readLine)))
+
+;; 終了手続き
+(.close my-stream)
+(.close my-socket)
+
+;;===============
+;; server
+;;===============
+
+user=> (def my-socket (ServerSocket. (Integer. "8888")))
+(def my-stream (. my-socket accept))
+
+user=> #'user/my-socket
+user=>
+user=>
+user=> #'user/my-stream
+
+;;===============
+;; client
+;;===============
+
+$ python -m telnetlib localhost 8888
+
+==============================================
+
+;; …そもそも (println 1 2 3) とは？
+
+user=>  (println 1 2 3)
+1 2 3
+nil
+
+(def foo (java.io.StringWriter.))
+(.write foo "1 2 3\n")
+(.write foo "4 5 6\n")
+(.append foo "7 8 9\n")
+
+user=> (.write *out* (str foo))
+1 2 3
+4 5 6
+7 8 9
+nil
+
+;; なぜ！？close()、flush() をやっても効果がない…。
+
+user=> (.close foo)
+nil
+user=> foo
+#object[java.io.StringWriter 0x78b343dc "1 2 3\n4 5 6\n7 8 9\n"]
+
+user=> (.flush foo)
+nil
+user=> foo
+#object[java.io.StringWriter 0x78b343dc "1 2 3\n4 5 6\n7 8 9\n"]
+
+
+;; リソースを解放したいなら、…こう？
+
+user=> (with-open [foo2 (java.io.StringWriter.)]
+　(.write foo2 "1 2 3\n")
+　(.write foo2 "4 5 6\n")
+　(.append foo2 "7 8 9\n")
+
+　(str foo2))
+  #_=>   #_=>   #_=>   #_=>   #_=> "1 2 3\n4 5 6\n7 8 9\n"
+
+==============================================
+
+user=> (with-out-str
+　(print "the sum of ")
+　(print 5)
+　(print " and ")
+　(print 2)
+　(print " is ")
+　(print (+ 2 5)))
+  #_=>   #_=>   #_=>   #_=>   #_=>   #_=> "the sum of 5 and 2 is 7"
+
+==============================================
