@@ -4,7 +4,11 @@
 
 ;;===============
 
-;; ※コンディション定義「error」んとこは、パスしました。
+※　13.1 コンディション定義「error」んとこは、パスしました。
+
+※　この章で順番に作成していく「部品」のほとんどは、serve 実行時には使っていない（「parse-request-line」のみ）。
+※　なるべく本のサンプルコードをトレースする方針だけど、この Web サーバーを実行してみたところ、ページ呼び出し「http://localhost:8080/greeting」にたいして、
+※　ずーっと「待ち」の状態になる。…うーん。それを回避しつつ、僕なりに、本にある「動的な Web サイトを作る」とこうなりました。
 
 (defn http-char [[c1 & c2]]
 　(Integer/parseInt (str (char c1) (char (first c2))), 16))
@@ -216,5 +220,8 @@ Content-Length:67
 
 <html>Nice to meet you, gima326!<br><a href="/quit">quit</a></html>
 Sorry... I don't know that page.
+bye!
+Execution error (SocketException) at java.net.ServerSocket/accept (ServerSocket.java:509).
+Socket is closed
 
 ==============================================
