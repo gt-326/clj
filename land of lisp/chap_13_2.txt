@@ -8,7 +8,8 @@
 ※　「submit」ボタンを押下して、入力項目の値をパラメータとして取得できているものの、応答（ログインOK、NGページ）をブラウザ側へ送ろうとしているが、
 ※　ブラウザの再描画ができない、という状態（「待ち」状態のまま）。その原因も突き止めることができていない。
 
-※　「submit」ボタンではなく、ブラウザのリロードボタンを押下した場合に、「ログインNG」が表示された。
+※　「submit」ボタンではなく、ブラウザのリロードボタンを押下した場合（GET）に、「ログインNG」が表示された。
+※　…が、それは POST のパラメータ取得方法を簡易化したためで、デタラメな値が取得され、POST 処理に入ったことによりおこる現象。
 
 (defn http-char [[c1 & c2]]
 　(Integer/parseInt (str (char c1) (char (first c2))), 16))
@@ -52,7 +53,7 @@
 
 (defn make_response [content]
 　(clojure.pprint/cl-format false
-　　"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length:~a\r\n\r\n~a" (count content) content))
+　　"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nConnection: Close\r\nContent-Length: ~a\r\n\r\n~a\r\n\r\n" (count content) content))
 
 ;;==============================================
 
@@ -70,11 +71,9 @@
 　　(if (= path "/login")
 　　　(if (empty? params_post)
 　　　　(make_response (make_post_page ""))
-
 　　　　(if (= "id=1234&pw=4321" params_post)
 　　　　　"Welcome back!"
 　　　　　(make_response (make_post_page "login failed."))))
-
 　　　(if (= path "/quit")
 　　　　"bye!"
 　　　　"Sorry... I don't know that page."))))
@@ -97,7 +96,12 @@
 　　　　　　　　param_post (last (for [i (range idx) :let [line (. r readLine)] ] line))
 　　　　　　　　content (hdlr encode path param_post) ]
 
+　　　　　(println (str "[params]: " path "---" idx "---" param_post))
+　　　　　(println (str "[content]: " content))
+
+　　　　　(. w flush)
 　　　　　(. w write content)
+;;　　　　　(. w newLine)
 　　　　　(. w flush)
 
 　　　　　(if (= "bye!" content)
