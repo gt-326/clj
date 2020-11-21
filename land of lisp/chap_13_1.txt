@@ -1,0 +1,231 @@
+;;===============
+
+;;[ １３章　Webサーバを作ろう！：P247〜263 ]
+
+;;===============
+
+※　13.1 コンディション定義「error」んとこは、パスしました。
+
+※　この章で順番に作成していく「部品」のほとんどは、serve 実行時には使っていない（「parse-request-line」のみ）。
+※　なるべく本のサンプルコードをトレースする方針だけど、この Web サーバーを実行してみたところ、ページ呼び出し「http://localhost:8080/greeting」にたいして、
+※　ずーっと「待ち」の状態になる。…うーん、なんだろうこれ？
+
+※　…で、それを回避しつつ、僕なりに「動的な Web サイトを作る」とこうなりました。とりいそぎ（GETリクエストにのみ対応）。
+
+(defn http-char [[c1 & c2]]
+　(Integer/parseInt (str (char c1) (char (first c2))), 16))
+
+;; encode : "UTF8"、"EUC-JP"
+
+(defn decode-params [s encode]
+　(loop [[car & cdr] (for [b (.getBytes s encode)] b) rslt []]
+　　(if (nil? car)
+　　　(String. (byte-array rslt) encode)
+　　　(cond
+　　　　(= car (byte \%)) (recur (rest (rest cdr))
+　　　　　(conj rslt (try (http-char cdr) (catch NumberFormatException e (byte \space)))))
+　　　　(= car (byte \+)) (recur cdr (conj rslt (int \space)))
+　　　　:else (recur cdr (conj rslt car))))))
+
+----------------------------------------------
+
+user=> (decode-params "あい%3Fうえ+お" "UTF8")
+"あい?うえ お"
+
+user=> (decode-params "%E3%81%BB%E3%81%92" "UTF8")
+"ほげ"
+
+==============================================
+
+(defn div-by [s sep] (clojure.string/split s sep))
+
+(defn parse-params_ [s encode]
+　(vec
+　　(for [ pair (div-by s #"&") :let [[i1 i2] (div-by pair #"=")] ]
+　　　(if (nil? i2)
+　　　　i1
+　　　　{(symbol (.toUpperCase i1)) (decode-params i2 encode)}))))
+
+(defn parse-params [s encode]
+　(apply conj
+　　(for [ pair (div-by s #"&") :let [[i1 i2] (div-by pair #"=")] ]
+　　　(if (nil? i2)
+　　　　i1
+　　　　{(symbol (.toUpperCase i1)) (decode-params i2 encode)}))))
+
+----------------------------------------------
+
+user=> (parse-params "name=ABC&age=25&gender=あい%3Fうえ+お" "UTF8")
+{NAME "ABC", AGE "25", GENDER "あい?うえ お"}
+
+user=> (def foo (parse-params "name=ABC&age=25&gender=あい%3Fうえ+お" "UTF8"))
+#'user/foo
+
+user=> (foo 'NAME)
+"ABC"
+
+==============================================
+
+(defn parse-request-line [encode s]
+　(let [[i1 i2] (div-by (first (rest (div-by s #" "))) #"\?")]
+　　(vec
+　　　(concat
+　　　　;;(list (parse-params (div-by i1 #"\/") encode))
+　　　　;;(list (parse-params (first (rest (div-by i1 #"\/"))) encode))
+　　　　(list (parse-params i1 encode))
+　　　　(if (not (nil? i2))
+　　　　　(list (parse-params i2 encode)))))))
+
+----------------------------------------------
+
+user=> (parse-request-line "UTF8" "GET /local/host/lolcats.html HTTP/1.1")
+["/local/host/lolcats.html"]
+
+user=> (parse-request-line "UTF8" "GET /lolcats.html?extra-funny=yes&name=ABC&age=25&gender=あい%3Fうえ+お HTTP/1.1")
+["/lolcats.html" {EXTRA-FUNNY "yes", NAME "ABC", AGE "25", GENDER "あい?うえ お"}]
+
+user=> (parse-request-line "UTF8" "GET /lolcats.html?extra-funny=yes&name=ABC&age=25&gender=%E3%81%BB%E3%81%92 HTTP/1.1")
+["/lolcats.html" {EXTRA-FUNNY "yes", NAME "ABC", AGE "25", GENDER "ほげ"}]
+
+==============================================
+
+(defn get-header_ [s]
+　(loop [ [car & cdr] (div-by s #"\s+")
+　　　　　　current car
+　　　　　　tmp ""
+　　　　　　rslt {} ]
+
+　　(if (nil? car)
+　　　(conj rslt {(symbol current) (.trim tmp)})
+　　　;;(conj rslt {(symbol current) tmp})
+
+　　　(recur cdr
+　　　　;; current
+　　　　(if (clojure.string/includes? car ":")
+　　　　　(.toUpperCase (clojure.string/replace car ":" ""))
+　　　　　current)
+
+　　　　;; tmp
+　　　　(if (clojure.string/includes? car ":") "" (str tmp car " "))
+
+　　　　;; rslt
+　　　　(if (clojure.string/includes? car ":")
+　　　　　(if (= car current) rslt (conj rslt {(symbol current) (.trim tmp)}))
+　　　　　rslt)))))
+
+(defn get-header [s]
+　(loop [ [car & cdr] (for [val (vec s) :when (clojure.string/includes? val ":")] val)
+　　　　　　rslt {} ]
+　　(if (nil? car)
+　　　rslt
+　　　(recur cdr
+　　　　(conj rslt
+　　　　　{ (symbol (.toUpperCase (first (div-by car #"\:"))))
+　　　　　　(.trim (clojure.string/replace (first (rest (div-by car #"\:")))  ": " "")) }
+)))))
+
+----------------------------------------------
+
+user=> (get-header (with-out-str
+　(println "foo: 1 ")
+　(print "bar: abc, 123 ")
+　(print "Content-Length: 123 ")))
+  #_=>   #_=>   #_=> {FOO "1", BAR "abc, 123", CONTENT-LENGTH "123"}
+
+==============================================
+
+(defn get-content-params_ [s header encode]
+　(let [len (header 'CONTENT-LENGTH)]
+　　(when len
+　　　(let [ is (.getInputStream s)
+　　　　　　　size (Integer/parseInt len)
+　　　　　　　content
+　　　　　　　　(loop [s 0 b (.read is) rslt ""]
+　　　　　　　　　(if (>= s size)
+　　　　　　　　　　rslt
+　　　　　　　　　　(recur (inc s) (.read is) (str rslt (char b))))) ]
+　　　　(parse-params content encode)))))
+
+(defn get-content-params_ [line header encode]
+　(let [len (header 'CONTENT-LENGTH)]
+　　(when len
+　　　(parse-params
+　　　　(apply str (reverse (subs (apply str (reverse line)) 0 (Integer/parseInt len))))
+　　　　encode))))
+
+(defn get-content-params [content header encode]
+　(let [len (header 'CONTENT-LENGTH)]
+　　(when len
+　　　(parse-params
+　　　　(subs
+　　　　　(clojure.string/replace content "&amp;" "&")
+　　　　　0 (Integer/parseInt len))
+　　　　encode))))
+
+==============================================
+
+(defn hello-request-handler_ [path header params]
+　(if (= path "/greeting")
+　　(if (or (nil? (first params)) (nil? (params 'name)))
+　　　"<html><form>What is your name?<input name='name' /></form></html>"
+　　　(str (clojure.pprint/cl-format false "<html>Nice to meet you, ~a!</html>" (params 'NAME))))))
+
+(defn hello-request-handler [line encode]
+　(let [ url (parse-request-line encode (first line)) ]
+　　(if (= (first url) "/greeting")
+　　　(let [content
+　　　　(if (empty? (rest url))
+　　　　　"<html><form>What is your name?<input name='name'/><br><a href=\"/quit\">quit</a></form></html>"
+　　　　　(clojure.pprint/cl-format false
+　　　　　　"<html>Nice to meet you, ~a!<br><a href=\"/quit\">quit</a></html>" ((first (rest url)) 'NAME))) ]
+
+　　　　(clojure.pprint/cl-format false
+　　　　　"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length:~a\r\n\r\n~a"
+　　　　　(count content) content))
+
+　　　(if (= (first url) "/quit")
+　　　　"bye!"
+　　　　"Sorry... I don't know that page."))))
+
+==============================================
+
+(import '(java.io StringReader InputStreamReader BufferedReader BufferedWriter OutputStreamWriter)
+　　　　　'(java.net ServerSocket))
+
+;; only for GET request
+
+(defn serve [hdlr encode]
+　(with-open [socket (ServerSocket. 8080)]
+　　(while true
+　　　(with-open [ stream (. socket accept)
+　　　　　　　　　　　w (BufferedWriter. (OutputStreamWriter. (.getOutputStream stream)))
+　　　　　　　　　　　r (BufferedReader. (InputStreamReader. (.getInputStream stream))) ]
+　　　　(let [ content (hdlr (line-seq r) encode) ]
+　　　　　(println content)
+
+　　　　　(. w write content)
+　　　　　(.flush w)
+　　　　　(if (= "bye!" content)
+　　　　　　(do
+　　　　　　　(.close stream)
+　　　　　　　(.close socket))))))))
+
+----------------------------------------------
+
+user=> (serve hello-request-handler "UTF8")
+HTTP/1.0 200 OK
+Content-Type: text/html
+Content-Length:92
+
+<html><form>What is your name?<input name='name'/><br><a href="/quit">quit</a></form></html>
+HTTP/1.0 200 OK
+Content-Type: text/html
+Content-Length:67
+
+<html>Nice to meet you, gima326!<br><a href="/quit">quit</a></html>
+Sorry... I don't know that page.
+bye!
+Execution error (SocketException) at java.net.ServerSocket/accept (ServerSocket.java:509).
+Socket is closed
+
+==============================================

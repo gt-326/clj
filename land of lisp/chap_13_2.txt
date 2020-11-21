@@ -1,0 +1,108 @@
+;;===============
+
+;;[ １３章　勝手に番外編　Webサーバを GET/POST リクエストに対応させてみよう！ ]
+
+;;===============
+
+※　…現状、「ログイン」ページの POST リクエストに完全には対応できていない状態。
+※　「submit」を押下して、入力項目のパラメータの取得はできているのに、応答をブラウザ側へ送ろうとするものの、
+※　再描画（ログインOK、NG）ができない、という状態。
+
+※　「submit」ではなく、ブラウザのリロードボタンを押下した場合に、「ログインNG」が表示された。
+
+(defn http-char [[c1 & c2]]
+　(Integer/parseInt (str (char c1) (char (first c2))), 16))
+
+(defn decode-params [s encode]
+　(loop [[car & cdr] (for [b (.getBytes s encode)] b) rslt []]
+　　(if (nil? car)
+　　　(String. (byte-array rslt) encode)
+　　　(cond
+　　　　(= car (byte \%)) (recur (rest (rest cdr))
+　　　　　(conj rslt (try (http-char cdr) (catch NumberFormatException e (byte \space)))))
+　　　　(= car (byte \+)) (recur cdr (conj rslt (int \space)))
+　　　　:else (recur cdr (conj rslt car))))))
+
+(defn div-by [s sep] (clojure.string/split s sep))
+
+(defn parse-params [s encode]
+　(apply conj
+　　(for [ pair (div-by s #"&") :let [[i1 i2] (div-by pair #"=")] ]
+　　　(if (nil? i2)
+　　　　i1
+　　　　{(symbol (.toUpperCase i1)) (decode-params i2 encode)}))))
+
+(defn parse-request-line [encode s]
+　(let [[i1 i2] (div-by (first (rest (div-by s #" "))) #"\?")]
+　　(vec
+　　　(concat
+　　　　(list (parse-params i1 encode))
+　　　　(if (not (nil? i2))
+　　　　　(list (parse-params i2 encode)))))))
+
+;;==============================================
+
+(defn make_get_page [params]
+　(if (empty? params)
+　　"<html><form>What is your name? <input name='name'/><br><a href=\"/quit\">quit</a></form></html>"
+　　(clojure.pprint/cl-format false "<html>Nice to meet you, ~a!<br><a href=\"/quit\">quit</a></html>" params)))
+
+(defn make_post_page [msg]
+　(str "<html><form action=\"/login\" method=\"post\" accept-charset=\"UTF-8\"><table><tr><td>userid</td><td><input name=\"id\"/></td></tr><tr><td>password</td><td><input name=\"pw\" type=password /></td></tr><tr><td></td><td><input type=submit /></td></tr></table></form><br>" "<font color=\"red\">" msg "</font><br>" "<a href=\"/quit\">quit</a></html>"))
+
+(defn make_response [content]
+　(clojure.pprint/cl-format false
+　　"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length:~a\r\n\r\n~a" (count content) content))
+
+;;==============================================
+
+(defn hello-request-handler [encode line & params_post]
+　(let [ [path params] (parse-request-line encode line) ]
+　　(if (= path "/greeting")
+　　　(make_response (make_get_page (if (or (nil? params) (nil? (params 'NAME))) "" (params 'NAME))))
+
+　　　(if (= path "/quit")
+　　　　"bye!"
+　　　　"Sorry... I don't know that page."))))
+
+(defn login-request-handler [encode line params_post]
+　(let [ path (first (rest (div-by line #" "))) ]
+　　(if (= path "/login")
+　　　(if (empty? params_post)
+　　　　(make_response (make_post_page ""))
+
+　　　　(if (= "id=1234&pw=4321" params_post)
+　　　　　"Welcome back!"
+　　　　　(make_response (make_post_page "login failed."))))
+
+　　　(if (= path "/quit")
+　　　　"bye!"
+　　　　"Sorry... I don't know that page."))))
+
+;;==============================================
+
+(import '(java.io StringReader InputStreamReader BufferedReader BufferedWriter OutputStreamWriter)
+　　　　　'(java.net ServerSocket))
+
+(defn serve [hdlr encode]
+　(with-open [socket (ServerSocket. 8080)]
+　　(println "-- HTTP Server Start Listening --")
+
+　　(while true
+　　　(with-open [ stream (. socket accept)
+　　　　　　　　　　　r (BufferedReader. (InputStreamReader. (.getInputStream stream)))
+　　　　　　　　　　　w (BufferedWriter. (OutputStreamWriter. (.getOutputStream stream))) ]
+　　　　(let [ path (. r readLine)
+　　　　　　　　idx (if (clojure.string/includes? path "GET") 8 13)
+　　　　　　　　param_post (last (for [i (range idx) :let [line (. r readLine)] ] line))
+　　　　　　　　content (hdlr encode path param_post) ]
+
+　　　　　(. w write content)
+　　　　　(. w flush)
+
+　　　　　(if (= "bye!" content)
+　　　　　　(do
+　　　　　　　(.close stream)
+　　　　　　　(.close socket))))))))
+
+;;==============================================
