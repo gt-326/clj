@@ -8,9 +8,6 @@
 ※　「submit」ボタンを押下して、入力項目の値をパラメータとして取得できているものの、応答（ログインOK、NGページ）をブラウザ側へ送ろうとしているが、
 ※　ブラウザの再描画ができない、という状態（「待ち」状態のまま）。その原因も突き止めることができていない。
 
-※　「submit」ボタンではなく、ブラウザのリロードボタンを押下した場合（GET）に、「ログインNG」が表示された。
-※　…が、それは POST のパラメータ取得方法を簡易化したためで、デタラメな値が取得され、POST 処理に入ったことによりおこる現象。
-
 (defn http-char [[c1 & c2]]
 　(Integer/parseInt (str (char c1) (char (first c2))), 16))
 
@@ -57,7 +54,7 @@
 
 ;;==============================================
 
-(defn hello-request-handler [encode line & params_post]
+(defn hello-request-handler [encode line & others]
 　(let [ [path params] (parse-request-line encode line) ]
 　　(if (= path "/greeting")
 　　　(make_response (make_get_page (if (or (nil? params) (nil? (params 'NAME))) "" (params 'NAME))))
@@ -66,18 +63,26 @@
 　　　　"bye!"
 　　　　"Sorry... I don't know that page."))))
 
-(defn login-request-handler [encode line params_post]
+(defn login-request-handler [encode line isGet? params_post]
 　(let [ path (first (rest (div-by line #" "))) ]
 　　(if (= path "/login")
-　　　(if (empty? params_post)
+　　　(if isGet?
 　　　　(make_response (make_post_page ""))
-　　　　(if (= "id=1234&pw=4321" params_post)
+
+　　　　;; NG: リストを走査する処理をおこなうと、動作が滞る。
+　　　　;; (if (= "id=1234&pw=4321" ((fn [[n & more]] (if more (recur more) n)) params_post))
+　　　　;; (if (clojure.string/includes? params_post "id=1234&pw=4321")
+　　　　;; (if (some #{"id=1234&pw=4321"} params_post)
+　　　　;; (if (= "id=1234&pw=4321" param_post)
+
+　　　　(if (nil? params_post)
 　　　　　"Welcome back!"
 　　　　　(make_response (make_post_page "login failed."))))
+
 　　　(if (= path "/quit")
 　　　　"bye!"
 　　　　"Sorry... I don't know that page."))))
-
+    
 ;;==============================================
 
 (import '(java.io StringReader InputStreamReader BufferedReader BufferedWriter OutputStreamWriter)
@@ -92,16 +97,17 @@
 　　　　　　　　　　　r (BufferedReader. (InputStreamReader. (.getInputStream stream)))
 　　　　　　　　　　　w (BufferedWriter. (OutputStreamWriter. (.getOutputStream stream))) ]
 　　　　(let [ path (. r readLine)
+　　　　　　　　isGet? (clojure.string/includes? path "GET")
 　　　　　　　　idx (if (clojure.string/includes? path "GET") 8 13)
-　　　　　　　　param_post (last (for [i (range idx) :let [line (. r readLine)] ] line))
-　　　　　　　　content (hdlr encode path param_post) ]
+　　　　　　　　params_post (for [i (range idx) :let [line (. r readLine)] ] line)
+　　　　　　　　content (hdlr encode path isGet? params_post) ]
 
-　　　　　(println (str "[params]: " path "---" idx "---" param_post))
-　　　　　(println (str "[content]: " content))
+　　　　　;; NG: リスト（params_post）を表示しようとすると、動作が滞る。
+　　　　　;; (println (str "[params]: " path "---" idx "---" params_post))
 
-　　　　　(. w flush)
+　　　　　(println (str "[params]: " path "---" idx "---" content))
+
 　　　　　(. w write content)
-;;　　　　　(. w newLine)
 　　　　　(. w flush)
 
 　　　　　(if (= "bye!" content)
