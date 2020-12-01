@@ -38,7 +38,7 @@
 ;; \a
 
 (defn draw-board [board]
-　(letfn [(fnc [[player dice] idx]
+　(letfn [ (fnc [[player dice] idx]
 　　(str
 　　　;; space
 　　　(if (= 0 (rem idx BOARD_SIZE))
@@ -46,13 +46,20 @@
 　　　;; pos
 　　　"[" (player-letter player) "-" dice "]"
 　　　;; newline
-　　　(if (odd? idx) "\n" " ")))]
+　　　(if (= 0 (rem (inc idx) BOARD_SIZE)) "\n" " "))) ]
 
 　　(print (apply str (for [i (range BOARD-HEXNUM)] (fnc (board i) i))))))
 
 ;; user=> (draw-board [[0 2] [1 1] [1 3] [0 1]])
 ;;    [a-2] [b-1]
 ;;  [b-3] [a-1]
+;; nil
+
+;; user=> (draw-board [[0 1] [0 1] [0 3] [1 1] [0 2] [0 1] [1 2] [0 2] [1 2] [0 2] [0 1] [1 3] [0 1] [1 3] [1 3] [1 3]])
+;;         [a-1] [a-1] [a-3] [b-1]
+;;       [a-2] [a-1] [b-2] [a-2]
+;;     [b-2] [a-2] [a-1] [b-3]
+;;   [a-1] [b-3] [b-3] [b-3]
 ;; nil
 
 ;;==============================================
@@ -97,7 +104,6 @@
 　　　:when (= player ((board p) 0)) ]
 
 　　　(apply concat
-;;　　　　(for [ n (neighbors p)
 　　　　(for [ n (NEIGHBORS p)
 　　　　　:let [[n_type n_dice] (board n)]
 　　　　　:when (and (> p_dice n_dice) (not (= p_type n_type))) ]
