@@ -1,6 +1,6 @@
 ;;===============
 
-;;[ １５章　関数型スタイルでゲームを書こう ]
+;;[ １５章　関数型スタイルでゲームを書こう　その１：ダイス・オブ・ドゥームの実装、バージョン１ P299〜320 ]
 
 ;;===============
 
@@ -8,6 +8,7 @@
 (def MAX_DICE 3)
 (def BOARD_SIZE 2)
 (def BOARD-HEXNUM (* BOARD_SIZE BOARD_SIZE))
+(def BOARD-IDXES (range BOARD-HEXNUM))
 
 (defn neighbors [idx]
 　(let [ up (- idx BOARD_SIZE)
@@ -16,12 +17,15 @@
 　　　　　　(if (pos? (rem idx BOARD_SIZE)) (list (dec up) (dec idx)))
 　　　　　　(if (pos? (rem (inc idx) BOARD_SIZE)) (list (inc idx) (inc down)))) ]
 
-　　(for [i idxes :when (and (>= i 0) (< i BOARD-HEXNUM)) ] i)))
+　　(sort (vec (for [i idxes :when (and (<= 0 i) (< i BOARD-HEXNUM))] i)))))
 
 ;; user=> (neighbors 0)
-;; (2 1 3)
+;; (1 2 3)
 
-(def NEIGHBORS (vec (map #(neighbors %) (range BOARD-HEXNUM))))
+(def NEIGHBORS (vec (map #(neighbors %) BOARD-IDXES)))
+
+;; user=> NEIGHBORS
+;; [(1 2 3) (0 3) (0 3) (0 1 2)]
 
 ;;==============================================
 
@@ -48,7 +52,7 @@
 　　　;; newline
 　　　(if (= 0 (rem (inc idx) BOARD_SIZE)) "\n" " "))) ]
 
-　　(print (apply str (for [i (range BOARD-HEXNUM)] (fnc (board i) i))))))
+　　(print (apply str (map #(fnc (board %) %) BOARD-IDXES)))))
 
 ;; user=> (draw-board [[0 2] [1 1] [1 3] [0 1]])
 ;;    [a-2] [b-1]
@@ -99,7 +103,7 @@
 
 (defn search-capable-moves [board player fnc]
 　(apply concat
-　　(for [ p (range BOARD-HEXNUM)
+　　(for [ p BOARD-IDXES
 　　　:let [[p_type p_dice] (board p)]
 　　　:when (= player ((board p) 0)) ]
 
@@ -144,11 +148,13 @@
 　(loop [ board (gen-board BOARD-HEXNUM NUM_PLAYERS MAX_DICE)
 　　　　　　tree (game-tree board player 0 true) ]
 
-　　(if (not (empty? (first (rest (rest tree)))))
-　　　tree
+　　(if (empty? (last tree))
 　　　(recur
 　　　　(gen-board BOARD-HEXNUM NUM_PLAYERS MAX_DICE)
-　　　　(game-tree board player 0 true)))))
+　　　　(game-tree board player 0 true))
+　　　(do
+　　　　(println (str "[board] : " board))
+　　　　tree))))
 
 ;;==============================================
 
@@ -158,41 +164,36 @@
 　　(draw-board (first (rest tree)))))
 
 (defn winners [board]
-　(let [ tally (for [hex board] (first hex))
-　　　　　totals (for [i (set tally)] [i (count (filter #(= i (first %)) board))])
-　　　　　best (apply max (map #(first (rest %)) totals)) ]
-　　(map first (filter #(= best (first (rest %))) totals))))
+　(let [ totals (for [p (range NUM_PLAYERS)] [p (count (filter #(= p (first %)) board))])
+　　　　　[_ best] (apply map max totals) ]
+　　(for [[p sum] totals :when (= best sum)] p)))
 
 (defn announce-winner [board]
-　(let [w (winners board)]
+　(let [players (winners board)]
 　　(println
-　　　(if (= (count w) 1)
-　　　　(str "\n" "[ The winner is " (player-letter (first w)) " ]")
+　　　(if (= 1 (count players))
+　　　　(str "\n" "[ The winner is " (player-letter (first players)) " ]")
 　　　　(str "\n" "[ The game is a tie between "
-　　　　　(.trim (apply str (for [p w] (str (player-letter p) " ")))) " ]")))))
+　　　　　(.trim (apply str (map #(str (player-letter %) " ") players))) " ]")))))
 
 (defn hdle-human [tree]
-　(let [moves (first (rest (rest tree)))]
+　(let [moves (vec (last tree))]
 　　(println (str "\n" "choose your move: "))
 
-　　(loop [move moves cnt 1]
-　　　(if (empty? move)
-　　　　(first (rest ((vec moves) (dec (read)))))
-
-　　　　(let [action (first (first move))]
-　　　　　(println
-　　　　　　(if (nil? action)
-　　　　　　　(str cnt ". " "end turn")
-　　　　　　　(str cnt ". " "[ " (first action) " -> " (first (rest action)) " ]")))
-　　　　　(recur
-　　　　　　(rest move)
-　　　　　　(inc cnt)))))))
+　　(loop [[car & cdr] moves cnt 1]
+　　　(if (nil? car)
+　　　　(first (rest (moves (dec (read)))))
+　　　　(do
+　　　　　(if-let [[f t] (first car)]
+　　　　　　(println (str cnt ". " "[ " f " -> " t " ]"))
+　　　　　　(println (str cnt ". " "end turn")))
+　　　　　(recur cdr (inc cnt)))))))
 
 (defn play-vs-human [tree]
 　(do
 　　(print-info tree)
 
-　　(if (empty? (first (rest (rest tree))))
+　　(if (empty? (last tree))
 　　　(announce-winner (first (rest tree)))
 　　　(recur (hdle-human tree)))))
 

@@ -1,6 +1,6 @@
 ;;===============
 
-;;[ １５章　関数型スタイルでゲームを書こう その２：コンピュータによる対戦相手を作る　]
+;;[ １５章　関数型スタイルでゲームを書こう　その２：コンピュータによる対戦相手を作る P321〜325　]
 
 ;;===============
 
@@ -28,7 +28,7 @@
 　　(print-info tree)
 
 　　(cond
-　　　(empty? (first (rest (rest tree)))) (announce-winner (first (rest tree)))
+　　　(empty? (last tree)) (announce-winner (first (rest tree)))
 　　　(zero? (first tree)) (play-vs-computer (hdle-human tree))
 　　　:else (play-vs-computer (hdle-computer tree)))))
 
@@ -38,7 +38,7 @@
 
 ;;==============================================
 
-;; old
+;; originals from book
 
 (defn rate-position_ [tree player]
 　(let [ moves (first (rest (rest tree))) ]
@@ -49,25 +49,16 @@
 
 　　　(let [ w (vec (winners (first (rest tree))))
 　　　　　　　rslt (if (contains? w player) (/ 1.0 (count w)) 0) ]
-;;　　　　(println "\n[rslt] : " rslt)
-　　　　rslt)
-)))
+　　　　rslt))))
 
 (defn get-ratings_ [tree player]
 　(for [tree_child (first (rest (rest tree)))]
-;;　　(println "\ntree_child : " tree_child)
-　　(rate-position_ (first (rest tree_child)) player)
-))
+　　(rate-position_ (first (rest tree_child)) player)))
 
 (defn hdle-computer_ [tree]
 　(let [ ratings (vec (get-ratings_ tree (first tree)))
 　　　　　idx (.indexOf ratings (apply max ratings)) ]
-;;　　(println "\n[param0] : " ratings)
-;;　　(println "[param1] : " (vec (first (rest (rest tree)))))
-;;　　(println "[param2] : " (apply max ratings))
-;;　　(println "[param3] : " (.indexOf ratings (apply max ratings)))
 
-　　(first (rest ((vec (first (rest (rest tree)))) idx)))
-))
+　　(first (rest ((vec (first (rest (rest tree)))) idx)))))
 
 ;;==============================================

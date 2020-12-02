@@ -1,8 +1,23 @@
 ;;===============
 
-;;[ １５章　関数型スタイルでゲームを書こう その３：ダイス・オブ・ドゥームを高速化する　]
+;;[ １５章　関数型スタイルでゲームを書こう　その３：ダイス・オブ・ドゥームを高速化する P326〜336 ]
 
 ;;===============
+
+;; to expand game board size.（ [2*2] -> [3*3] ）
+
+(def BOARD_SIZE 3)
+(def BOARD-HEXNUM (* BOARD_SIZE BOARD_SIZE))
+
+;; memoize
+
+(def BOARD-IDXES (memoize (range BOARD-HEXNUM)))
+(def NEIGHBORS (memoize (vec (map #(neighbors %) BOARD-IDXES))))
+(def rate-position (memoize rate-position))
+
+;;==============================================
+
+;; touch of lexical closure.
 
 (def foo (let [x 5] (fn [] x)))
 
@@ -39,6 +54,8 @@
 
 ;;==============================================
 
+;; how to resolve symbol and use linked function.
+
 ;; user=> (defn squared [x] (* x x))
 ;; #'user/squared
 
@@ -64,55 +81,63 @@
 ;; Execution error (ClassCastException) at user/eval3910 (REPL:1).
 ;; java.lang.String cannot be cast to clojure.lang.Symbol
 
-;;==============================================
-
 user=> (let [ old-squared (resolve 'squared) ]
 　(old-squared 3))
   #_=> 9
 
 ;;==============================================
 
+;; comparison of simple recursion types. [ fastest type was ver4 ]
 
+(defn my-length [lst]
+　(if (empty? lst)
+　　0
+　　(inc (my-length (rest lst)))))
 
-;;==============================================
+;; user=> (my-length (range 5950))
+;; Execution error (StackOverflowError) at user/my-length (REPL:4).
+;; null
 
-(defn rate-position [tree player]
-　(let [ moves (first (rest (rest tree))) ]
-　　(if (not (empty? moves))
-　　　(apply
-　　　　(if (= (first tree) player) max min)
-　　　　(get-ratings tree player))
+(defn my-length2 [lst]
+　(letfn [ (fnc [lst acc]
+　　(if (empty? lst)
+　　　acc
+　　　(fnc (rest lst) (inc acc)))) ]
+　　(fnc lst 0)))
 
-　　　(let [ w (vec (winners (first (rest tree))))
-　　　　　　　rslt (if (contains? w player) (/ 1.0 (count w)) 0) ]
-;;　　　　(println "\n[rslt] : " rslt)
-　　　　rslt)
-)))
+;; user=> (my-length2 (range 7450))
+;; Execution error (StackOverflowError) at user/my-length2$fnc (REPL:5).
+;; null
 
-(defn get-ratings [tree player]
-　(for [tree_child (first (rest (rest tree)))]
-;;　　(println "\ntree_child : " tree_child)
-　　(rate-position (first (rest tree_child)) player)
-))
+(defn my-length2-2 [lst]
+　(letfn [ (fnc [l acc]
+　　(if (empty? l)
+　　　acc
+　　　(recur (rest l) (inc acc)))) ]
+　　(fnc lst 0)))
 
-(defn hdle-computer [tree]
-　(let [ ratings (vec (get-ratings tree (first tree)))
-　　　　　idx (.indexOf ratings (apply max ratings)) ]
-;;　　(println "\n[param0] : " ratings)
-;;　　(println "[param1] : " (vec (first (rest (rest tree)))))
-;;　　(println "[param2] : " (apply max ratings))
-;;　　(println "[param3] : " (.indexOf ratings (apply max ratings)))
+(defn my-length3 [lst]
+　(loop [[car & cdr] lst acc 0]
+　　(if (nil? car)
+　　　acc
+　　　(recur cdr (inc acc)))))
 
-　　(first (rest ((vec (first (rest (rest tree)))) idx)))
-))
+(defn my-length4 [lst]
+　(loop [l lst acc 0]
+　　(if (empty? l)
+　　　acc
+　　　(recur (rest l) (inc acc)))))
 
-(defn play-vs-computer [tree]
-　(do
-　　(print-info tree)
+;; user=> (time (my-length2-2 (range 100000000)))
+;; "Elapsed time: 5688.292553 msecs"
+;; 100000000
 
-　　(cond
-　　　(empty? (first (rest (rest tree)))) (announce-winner (first (rest tree)))
-　　　(zero? (first tree)) (play-vs-computer (hdle-human tree))
-　　　:else (play-vs-computer (hdle-computer tree)))))
+;; user=> (time (my-length3 (range 100000000)))
+;; "Elapsed time: 5997.472004 msecs"
+;; 100000000
+
+;; user=> (time (my-length4 (range 100000000)))
+;; "Elapsed time: 4864.939613 msecs"
+;; 100000000
 
 ;;==============================================
