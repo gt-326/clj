@@ -1,0 +1,118 @@
+;;===============
+
+;;[ １５章　関数型スタイルでゲームを書こう その３：ダイス・オブ・ドゥームを高速化する　]
+
+;;===============
+
+(def foo (let [x 5] (fn [] x)))
+
+;; user=> (foo)
+;; 5
+
+(let [line-number (atom 0)]
+　(defn my-print [x]
+　　(do
+　　　(println @line-number)
+　　　(println x)
+　　　(reset! line-number (inc @line-number))
+　　　nil)))
+　　
+;; user=> (my-print "this")
+;; 0
+;; this
+;; nil
+
+;; user=> (my-print "is")
+;; 1
+;; is
+;; nil
+
+;; user=> (my-print "a")
+;; 2
+;; a
+;; nil
+
+;; user=> (my-print "test.")
+;; 3
+;; test.
+;; nil
+
+;;==============================================
+
+;; user=> (defn squared [x] (* x x))
+;; #'user/squared
+
+;; user=> (squared 2)
+;; 4
+
+;; user=> ((resolve (symbol "squared")) 2)
+;; 4
+
+;; user=> ((resolve (symbol 'squared)) 2)
+;; 4
+
+;; user=> ((symbol 'squared) 2)
+;; nil
+
+;; user=> ((symbol "squared") 2)
+;; nil
+
+;; user=> ((resolve 'squared) 3)
+;; 9
+
+;; user=> ((resolve "squared") 3)
+;; Execution error (ClassCastException) at user/eval3910 (REPL:1).
+;; java.lang.String cannot be cast to clojure.lang.Symbol
+
+;;==============================================
+
+user=> (let [ old-squared (resolve 'squared) ]
+　(old-squared 3))
+  #_=> 9
+
+;;==============================================
+
+
+
+;;==============================================
+
+(defn rate-position [tree player]
+　(let [ moves (first (rest (rest tree))) ]
+　　(if (not (empty? moves))
+　　　(apply
+　　　　(if (= (first tree) player) max min)
+　　　　(get-ratings tree player))
+
+　　　(let [ w (vec (winners (first (rest tree))))
+　　　　　　　rslt (if (contains? w player) (/ 1.0 (count w)) 0) ]
+;;　　　　(println "\n[rslt] : " rslt)
+　　　　rslt)
+)))
+
+(defn get-ratings [tree player]
+　(for [tree_child (first (rest (rest tree)))]
+;;　　(println "\ntree_child : " tree_child)
+　　(rate-position (first (rest tree_child)) player)
+))
+
+(defn hdle-computer [tree]
+　(let [ ratings (vec (get-ratings tree (first tree)))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+;;　　(println "\n[param0] : " ratings)
+;;　　(println "[param1] : " (vec (first (rest (rest tree)))))
+;;　　(println "[param2] : " (apply max ratings))
+;;　　(println "[param3] : " (.indexOf ratings (apply max ratings)))
+
+　　(first (rest ((vec (first (rest (rest tree)))) idx)))
+))
+
+(defn play-vs-computer [tree]
+　(do
+　　(print-info tree)
+
+　　(cond
+　　　(empty? (first (rest (rest tree)))) (announce-winner (first (rest tree)))
+　　　(zero? (first tree)) (play-vs-computer (hdle-human tree))
+　　　:else (play-vs-computer (hdle-computer tree)))))
+
+;;==============================================

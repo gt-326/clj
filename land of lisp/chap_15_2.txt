@@ -1,0 +1,73 @@
+;;===============
+
+;;[ １５章　関数型スタイルでゲームを書こう その２：コンピュータによる対戦相手を作る　]
+
+;;===============
+
+(defn rate-position [player tree]
+　(let [ t_child (last tree) ]
+　　(if (empty? t_child)
+　　　(let [ w (vec (winners (first (rest tree)))) ]
+　　　　(if (contains? w player) (/ 1.0 (count w)) 0))
+
+　　　(apply
+　　　　(if (= (first tree) player) max min)
+　　　　(map #(rate-position player (first (rest %))) t_child)))))
+
+(defn hdle-computer [tree]
+　(let [ player (first tree)
+　　　　　t_child (last tree)
+　　　　　t_grandchild (map #(first (rest %)) t_child)
+　　　　　ratings (vec (map #(rate-position player %) t_grandchild))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+
+　　(first (rest ((vec t_child) idx)))))
+
+(defn play-vs-computer [tree]
+　(do
+　　(print-info tree)
+
+　　(cond
+　　　(empty? (first (rest (rest tree)))) (announce-winner (first (rest tree)))
+　　　(zero? (first tree)) (play-vs-computer (hdle-human tree))
+　　　:else (play-vs-computer (hdle-computer tree)))))
+
+;; user=> (let [tree (gen-game-tree 0)]
+;; 　(println tree)
+;; 　(play-vs-computer tree))
+
+;;==============================================
+
+;; old
+
+(defn rate-position_ [tree player]
+　(let [ moves (first (rest (rest tree))) ]
+　　(if (not (empty? moves))
+　　　(apply
+　　　　(if (= (first tree) player) max min)
+　　　　(get-ratings_ tree player))
+
+　　　(let [ w (vec (winners (first (rest tree))))
+　　　　　　　rslt (if (contains? w player) (/ 1.0 (count w)) 0) ]
+;;　　　　(println "\n[rslt] : " rslt)
+　　　　rslt)
+)))
+
+(defn get-ratings_ [tree player]
+　(for [tree_child (first (rest (rest tree)))]
+;;　　(println "\ntree_child : " tree_child)
+　　(rate-position_ (first (rest tree_child)) player)
+))
+
+(defn hdle-computer_ [tree]
+　(let [ ratings (vec (get-ratings_ tree (first tree)))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+;;　　(println "\n[param0] : " ratings)
+;;　　(println "[param1] : " (vec (first (rest (rest tree)))))
+;;　　(println "[param2] : " (apply max ratings))
+;;　　(println "[param3] : " (.indexOf ratings (apply max ratings)))
+
+　　(first (rest ((vec (first (rest (rest tree)))) idx)))
+))
+
+;;==============================================
