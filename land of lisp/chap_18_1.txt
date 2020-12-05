@@ -1,0 +1,167 @@
+;;===============
+
+;;[ １８章　遅延プログラミング　その１：Lisp に遅延評価を足す P375〜383 ]
+
+;;===============
+
+(defmacro my-lazy [& body]
+　`(let [ forced# (atom false)
+　　　　　　value# (atom nil) ]
+　　(fn []
+　　　(do
+　　　　(when-not (deref forced#)
+　　　　　(reset! value# (do ~@body))
+　　　　　(reset! forced# true))
+　　　　(deref value#)))))
+
+(defn my-force [lazy-value] (lazy-value))
+
+;; user=> (my-lazy (+ 1 2))
+;; #object[user$eval2904$fn__2905 0xae5f877 "user$eval2904$fn__2905@ae5f877"]
+;; user=> ((my-lazy (+ 1 2)))
+;; 3
+;; user=> (my-force (my-lazy (+ 1 2)))
+;; 3
+
+;;==============================================
+
+(defmacro lazy-cons [a d]
+　`(my-lazy (cons ~a (cons ~d ()))))
+
+(defn lazy-car [x] (first (my-force x)))
+(defn lazy-cadr [x] (first (rest (my-force x))))
+(defn lazy-cdr [x] (rest (my-force x)))
+
+;; user=> (def FOO (lazy-cons 4 7))
+;; #'user/FOO
+;; user=> (lazy-car FOO)
+;; 4
+;; user=> (lazy-cadr FOO)
+;; 7
+;; user=> (my-cdr FOO)
+;; (7)
+
+;;==============================================
+
+(def INTEGERS
+　(letfn [(f [n] (lazy-cons n (f (inc n))))] (f 1)))
+
+;; user=> (lazy-car INTEGERS)
+;; 1
+;; user=> (lazy-car (lazy-cadr INTEGERS))
+;; 2
+;; user=> (lazy-car (lazy-cadr (lazy-cadr INTEGERS)))
+;; 3
+
+;;==============================================
+
+(defn lazy-nil [] (my-lazy nil))
+(defn lazy-nil? [x] (not (my-force x)))
+
+(defn lazy-empty [] (my-lazy ()))
+(defn lazy-empty? [x] (empty? (my-force x)))
+
+;; user=> (lazy-nil? (lazy-nil))
+;; true
+;; user=> (lazy-nil? (lazy-empty))
+;; false
+
+;; user=> (lazy-empty? (lazy-nil))
+;; true
+;; user=> (lazy-empty? (lazy-empty))
+;; true
+
+;;==============================================
+
+(defn make-lazy [[car & cdr]]
+　(my-lazy
+　　(if (not (nil? car))
+　　　(cons car (cons (make-lazy cdr) ())))))
+
+;; user=> (make-lazy '(+ 1 2 3))
+;; #object[user$make_lazy$fn__3756 0x3d03e8ab "user$make_lazy$fn__3756@3d03e8ab"]
+
+;;==============================================
+
+(defn my-take [n lazy_lst]
+　(loop [l lazy_lst cnt n rslt ()]
+　　(if (or (zero? cnt) (lazy-nil? l))
+　　　(reverse rslt)
+　　　(recur
+　　　　(lazy-cadr l)
+　　　　(dec cnt)
+　　　　(cons (lazy-car l) rslt)))))
+
+(defn take-all [lazy_lst]
+　(loop [l lazy_lst rslt ()]
+　　(if (lazy-nil? l)
+　　　(reverse rslt)
+　　　(recur
+　　　　(lazy-cadr l)
+　　　　(cons (lazy-car l) rslt)))))
+
+;; user=> (my-take 2 (make-lazy '(+ 1 2 3)))
+;; (+ 1)
+;; user=> (my-take 5 (make-lazy (range 10)))
+;; (0 1 2 3 4)
+;; user=> (take-all (make-lazy '(q w e r t y u i o p a s d f)))
+;; (q w e r t y u i o p a s d f)
+
+;;==============================================
+
+(defn lazy-mapcar [fnc lazy_lst]
+　(my-lazy
+　　(if (not (lazy-nil? lazy_lst))
+　　　(cons
+　　　　(fnc (lazy-car lazy_lst))
+　　　　(cons
+　　　　　(lazy-mapcar fnc (lazy-cadr lazy_lst))
+　　　　　())))))
+
+;; user=> (my-take 10 (lazy-mapcar inc INTEGERS))
+;; (2 3 4 5 6 7 8 9 10 11)
+;; user=> (my-take 10 (lazy-mapcar #(* % %) INTEGERS))
+;; (1 4 9 16 25 36 49 64 81 100)
+
+
+(defn lazy-mapcan [fnc lazy_lst]
+　(letfn [ (f [lst-cur]
+　　(if (lazy-nil? lst-cur)
+　　　(my-force (lazy-mapcan fnc (lazy-cadr lazy_lst)))
+　　　(cons
+　　　　(lazy-car lst-cur)
+　　　　(cons
+　　　　　(my-lazy (f (lazy-cadr lst-cur)))
+　　　　　())))) ]
+
+　　(my-lazy
+　　　(if (not (lazy-nil? lazy_lst))
+　　　　(f (fnc (lazy-car lazy_lst)))))))
+
+;; user=> (my-take 10
+;; 　(lazy-mapcan
+;; 　　(fn [x] (if (even? x) (make-lazy (list x)) (lazy-nil)))
+;; 　　INTEGERS))
+;;   #_=>   #_=>   #_=> (2 4 6 8 10 12 14 16 18 20)
+
+
+(defn lazy-find-if [fnc lazy_lst]
+　(if (not (lazy-nil? lazy_lst))
+　　(let [x (lazy-car lazy_lst)]
+　　　(if (fnc x)
+　　　　x
+　　　　(recur fnc (lazy-cadr lazy_lst))))))
+
+;; user=> (lazy-find-if odd? (make-lazy '(2 4 6 7 8 10)))
+;; 7
+
+
+(defn lazy-nth [n lazy_lst]
+　(if (zero? n)
+　　(lazy-car lazy_lst)
+　　(recur (dec n) (lazy-cadr lazy_lst))))
+
+;; user=> (lazy-nth 4 (make-lazy '(a b c d e f g)))
+;; e
+
+;;==============================================
