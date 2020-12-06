@@ -1,0 +1,203 @@
+;;===============
+
+;;[ １８章　遅延プログラミング　その２：ダイス・オブ・ドゥーム、バージョン２ P384〜386 ]
+
+;;===============
+
+(def NUM_PLAYERS 2)
+(def MAX_DICE 3)
+(def BOARD_SIZE 4)
+(def BOARD-HEXNUM (* BOARD_SIZE BOARD_SIZE))
+
+(def BOARD-IDXES (memoize (fn [] (range BOARD-HEXNUM))))
+
+;; user=> (BOARD-IDXES)
+;; (0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+
+(defn neighbors [idx]
+　(let [ up (- idx BOARD_SIZE)
+　　　　　down (+ idx BOARD_SIZE)
+　　　　　idxes (concat (list up down)
+　　　　　　(if (pos? (rem idx BOARD_SIZE)) (list (dec up) (dec idx)))
+　　　　　　(if (pos? (rem (inc idx) BOARD_SIZE)) (list (inc idx) (inc down)))) ]
+
+　　(sort (vec (for [i idxes :when (and (<= 0 i) (< i BOARD-HEXNUM))] i)))))
+
+(def NEIGHBORS (memoize (fn [] (vec (map #(neighbors %) (BOARD-IDXES))))))
+
+;; user=> ((NEIGHBORS) 0)
+;; (1 4 5)
+
+;;==============================================
+
+(defn gen-board [board player dice]
+　(vec (repeatedly board #(vec (list (rand-int player) (inc (rand-int dice)))))))
+
+(defn player-letter [n]
+　(char (+ 97 n)))
+
+(defn draw-board [board]
+　(letfn [ (fnc [[player dice] idx]
+　　(str
+　　　;; space
+　　　(if (= 0 (rem idx BOARD_SIZE))
+　　　　(apply str (repeat (- BOARD_SIZE (quot idx BOARD_SIZE)) "  ")) "")
+　　　;; pos
+　　　"[" (player-letter player) "-" dice "]"
+　　　;; newline
+　　　(if (= 0 (rem (inc idx) BOARD_SIZE)) "\n" " "))) ]
+
+　　(print (apply str (map #(fnc (board %) %) (BOARD-IDXES))))))
+
+;;==============================================
+
+(defn board-attack [board src dst]
+　(let [ [player dice] (board src) ]
+　　(loop [[car & cdr] board n 0 rslt []]
+　　　(if (nil? car)
+　　　　rslt
+　　　　(recur cdr (inc n)
+　　　　　(conj rslt
+　　　　　　(cond
+　　　　　　　(= n src) [player 1]
+　　　　　　　(= n dst) [player (dec dice)]
+　　　　　　　:else car)))))))
+
+(defn add-new-dice [board player spare-dice]
+　(loop [[car & cdr] board n spare-dice rslt []]
+　　(cond
+　　　(nil? car) rslt
+　　　(zero? n) (vec (concat rslt (cons car cdr)))
+　　　:else (let [ cur-player (car 0)
+　　　　　　　　　　　cur-dice (car 1)
+　　　　　　　　　　　flg (and (= cur-player player) (< cur-dice MAX_DICE)) ]
+　　　　(recur cdr
+　　　　　(if flg (dec n) n)
+　　　　　(conj rslt
+　　　　　　(if flg [cur-player (inc cur-dice)] car)))))))
+
+;;==============================================
+
+;; changed to be lazy
+
+(defn search-capable-moves [board player fnc]
+　(make-lazy
+　　(apply concat
+　　　(for [ p (BOARD-IDXES)
+　　　　:let [[p_type p_dice] (board p)]
+　　　　:when (= player p_type) ]
+
+　　　　(apply concat
+　　　　　(for [ n ((NEIGHBORS) p)
+　　　　　　:let [[n_type n_dice] (board n)]
+　　　　　　:when (and (> p_dice n_dice) (not (= p_type n_type))) ]
+
+　　　　　　(fnc p n)))))))
+
+(defn search-capable-moves_ [board player fnc]
+　;; loop-1 [start]
+　(lazy-mapcan
+　　(fn [p]
+　　　(let [[p_type p_dice] (board p)]
+　　　　(if (= player p_type)
+
+　　　　　;; loop-2 [start]
+　　　　　(lazy-mapcan
+　　　　　　(fn [n]
+　　　　　　　(let [[n_type n_dice] (board n)]
+　　　　　　　　(if (and (> p_dice n_dice) (not (= p_type n_type)))
+　　　　　　　　　(make-lazy (fnc p n))
+　　　　　　　　　(lazy-nil))))
+　　　　　　;; loop-2 [end]
+　　　　　　(make-lazy ((NEIGHBORS) p)))
+
+　　　　　(lazy-nil))))
+　　　;; loop-1 [end]
+　　　(make-lazy (BOARD-IDXES))))
+
+;; changed to be lazy
+
+(defn game-tree [board player spare-dice first-move]
+　(letfn [ (fn_attack [p n]
+　　(list (list [p n]
+　　　(game-tree
+　　　　(board-attack board p n)
+　　　　player
+　　　　(+ spare-dice ((board n) 1))
+　　　　false)))) ]
+
+　　(list player board
+　　　(if first-move
+　　　　;; true
+　　　　(search-capable-moves board player fn_attack)
+
+　　　　;; false
+　　　　(lazy-cons
+　　　　　(list nil
+　　　　　　(game-tree
+　　　　　　　(add-new-dice board player (dec spare-dice))
+　　　　　　　(rem (inc player) NUM_PLAYERS)
+　　　　　　　0
+　　　　　　　true))
+　　　　　(search-capable-moves board player fn_attack))))))
+
+;; changed to be lazy
+
+(defn gen-game-tree [player]
+　(loop [ board (gen-board BOARD-HEXNUM NUM_PLAYERS MAX_DICE)
+　　　　　　tree (game-tree board player 0 true) ]
+
+　　(if (lazy-nil? (last tree))
+　　　(recur
+　　　　(gen-board BOARD-HEXNUM NUM_PLAYERS MAX_DICE)
+　　　　(game-tree board player 0 true))
+　　　(do
+　　　　(println (str "[board] : " board))
+　　　　tree))))
+
+;;==============================================
+
+(defn print-info [tree]
+　(do
+　　(println (str "\n" "current player = " (player-letter (first tree))))
+　　(draw-board (first (rest tree)))))
+
+(defn winners [board]
+　(let [ totals (for [p (range NUM_PLAYERS)] [p (count (filter #(= p (first %)) board))])
+　　　　　[_ best] (apply map max totals) ]
+　　(for [[p sum] totals :when (= best sum)] p)))
+
+(defn announce-winner [board]
+　(let [players (winners board)]
+　　(println
+　　　(if (= 1 (count players))
+　　　　(str "\n" "[ The winner is " (player-letter (first players)) " ]")
+　　　　(str "\n" "[ The game is a tie between "
+　　　　　(.trim (apply str (map #(str (player-letter %) " ") players))) " ]")))))
+
+;; changed to be lazy
+
+(defn hdle-human [tree]
+　(let [moves (last tree)]
+　　(println (str "\n" "choose your move: "))
+
+　　(loop [m moves cnt 1]
+　　　(if (lazy-nil? m)
+　　　　(first (rest (lazy-nth (dec (read)) moves)))
+　　　　(do
+　　　　　(if-let [[f t] (first (lazy-car m))]
+　　　　　　(println (str cnt ". " "[ " f " -> " t " ]"))
+　　　　　　(println (str cnt ". " "end turn")))
+　　　　　(recur (lazy-cadr m) (inc cnt)))))))
+
+;; changed to be lazy
+
+(defn play-vs-human [tree]
+　(do
+　　(print-info tree)
+
+　　(if (lazy-nil? (last tree))
+　　　(announce-winner (first (rest tree)))
+　　　(recur (hdle-human tree)))))
+
+;;==============================================
