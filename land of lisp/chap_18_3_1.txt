@@ -4,7 +4,7 @@
 
 ;;===============
 
-;; changing to be lazy
+;; changed to be lazy
 
 (defn rate-position [player tree]
 　(let [ t_child (last tree) ]
@@ -16,7 +16,7 @@
 　　　　(take-all
 　　　　　(lazy-mapcar #(rate-position player (first (rest %))) t_child))))))
 
-;; changing to be lazy
+;; changed to be lazy
 
 (defn hdle-computer [tree]
 　(let [ player (first tree)
