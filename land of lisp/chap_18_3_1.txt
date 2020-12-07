@@ -1,0 +1,41 @@
+;;===============
+
+;;[ １８章　遅延プログラミング　その３−１：AI 部分に遅延評価への対応を追加する　]
+
+;;===============
+
+;; changing to be lazy
+
+(defn rate-position [player tree]
+　(let [ t_child (last tree) ]
+　　(if (lazy-nil? t_child)
+　　　(let [ w (vec (winners (first (rest tree)))) ]
+　　　　(if (contains? w player) (/ 1.0 (count w)) 0))
+　　　(apply
+　　　　(if (= (first tree) player) max min)
+　　　　(take-all
+　　　　　(lazy-mapcar #(rate-position player (first (rest %))) t_child))))))
+
+;; changing to be lazy
+
+(defn hdle-computer [tree]
+　(let [ player (first tree)
+　　　　　t_child (last tree)
+　　　　　t_grandchild (lazy-mapcar #(first (rest %)) t_child)
+　　　　　ratings (vec (take-all (lazy-mapcar #(rate-position player %) t_grandchild)))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+
+　　(first (rest (lazy-nth idx t_child)))))
+
+;; changed to be lazy
+
+(defn play-vs-computer [tree]
+　(do
+　　(print-info tree)
+
+　　(cond
+　　　(lazy-nil? (last tree)) (announce-winner (first (rest tree)))
+　　　(zero? (first tree)) (play-vs-computer (hdle-human tree))
+　　　:else (play-vs-computer (hdle-computer tree)))))
+
+;;==============================================
