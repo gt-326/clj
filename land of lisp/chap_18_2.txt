@@ -162,7 +162,7 @@
 　　(println (str "\n" "current player = " (player-letter (first tree))))
 　　(draw-board (first (rest tree)))))
 
-(defn print-info
+(defn print-info_
 　([tree] (print-info tree nil))
 　([tree attack]
 　　(do
@@ -172,6 +172,15 @@
 　　　　　　(str " : [ " (first attack) " -> " (first (rest attack)) " ]"))))
 
 　　　(draw-board (first (rest tree))))))
+   
+(defn print-info [tree attack]
+　(do
+　　(println
+　　　(str "\n" "current player = " (player-letter (first tree))
+　　　　(if attack
+　　　　　(str " : [ " (first attack) " -> " (first (rest attack)) " ]"))))
+
+　　(draw-board (first (rest tree)))))
 
 (defn winners [board]
 　(let [ totals (for [p (range NUM_PLAYERS)] [p (count (filter #(= p (first %)) board))])
