@@ -33,9 +33,9 @@
 
 (defn hdle-computer [tree]
 　(let [ player (first tree)
-　　　　　t_child (last tree)
-　　　　　t_limited (take-all (lazy-mapcar #(limit-tree-depth AI_LEVEL %) t_child))
-　　　　　t_grandchild (map #(first (rest %)) t_limited)
+　　　　　tree_limited (limit-tree-depth AI_LEVEL tree)
+　　　　　t_child (last tree_limited)
+　　　　　t_grandchild (take-all (lazy-mapcar #(first (rest %)) t_child))
 　　　　　ratings (vec (map #(ab-rate-position player Long/MAX_VALUE (- Long/MAX_VALUE) %) t_grandchild))
 　　　　　idx (.indexOf ratings (apply max ratings)) ]
 
