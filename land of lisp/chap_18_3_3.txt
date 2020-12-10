@@ -4,18 +4,18 @@
 
 ;;===============
 
-(defn ab-rate-position [player upper_l lower_l tree]
+(defn ab-rate-position_ [player upper_l lower_l tree]
 　(letfn [
 　　(ab-max [moves lower_l]
 　　　(if (not (lazy-nil? moves))
-　　　　(let [x (ab-rate-position player upper_l lower_l (first (rest (lazy-car moves)))) ]
+　　　　(let [x (ab-rate-position_ player upper_l lower_l (first (rest (lazy-car moves)))) ]
 　　　　　(if (>= x upper_l)
 　　　　　　(list x)
 　　　　　　(cons x (ab-max (lazy-cadr moves) (max x lower_l)))))))
 
 　　(ab-min [moves upper_l]
 　　　(if (not (lazy-nil? moves))
-　　　　(let [x (ab-rate-position player upper_l lower_l (first (rest (lazy-car moves)))) ]
+　　　　(let [x (ab-rate-position_ player upper_l lower_l (first (rest (lazy-car moves)))) ]
 　　　　　(if (<= x lower_l)
 　　　　　　(list x)
 　　　　　　(cons x (ab-min (lazy-cadr moves) (min x upper_l))))))) ]
@@ -26,6 +26,29 @@
 　　　(if (= (first tree) player)
 　　　　(apply max (ab-max t_child lower_l))
 　　　　(apply min (ab-min t_child upper_l)))))))
+
+(defn ab-rate-position [player upper_l lower_l tree]
+　(letfn [
+　　(ab-max [player upper lower moves]
+　　　(if (not (lazy-nil? moves))
+　　　　(let [x (ab-rate-position player upper lower (first (rest (lazy-car moves)))) ]
+　　　　　(if (< x upper)
+　　　　　　(cons x (ab-max player upper (max x lower) (lazy-cadr moves)))
+　　　　　　(list x)))))
+
+　　(ab-min [player upper lower moves]
+　　　(if (not (lazy-nil? moves))
+　　　　(let [x (ab-rate-position player upper lower (first (rest (lazy-car moves)))) ]
+　　　　　(if (> x lower)
+　　　　　　(cons x (ab-min player (min x upper) lower (lazy-cadr moves)))
+　　　　　　(list x))))) ]
+
+　　(let [ t_child (last tree) ]
+　　　(if (lazy-nil? t_child)
+　　　　(score-board player (first (rest tree)))
+　　　　(if (= (first tree) player)
+　　　　　(apply max (ab-max player upper_l lower_l t_child))
+　　　　　(apply min (ab-min player upper_l lower_l t_child)))))))
 
 ;;==============================================
 
