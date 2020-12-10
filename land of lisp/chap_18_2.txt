@@ -157,10 +157,21 @@
 
 ;;==============================================
 
-(defn print-info [tree]
+(defn print-info_ [tree]
 　(do
 　　(println (str "\n" "current player = " (player-letter (first tree))))
 　　(draw-board (first (rest tree)))))
+
+(defn print-info
+　([tree] (print-info tree nil))
+　([tree attack]
+　　(do
+　　　(println
+　　　　(str "\n" "current player = " (player-letter (first tree))
+　　　　　(if attack
+　　　　　　(str " : [ " (first attack) " -> " (first (rest attack)) " ]"))))
+
+　　　(draw-board (first (rest tree))))))
 
 (defn winners [board]
 　(let [ totals (for [p (range NUM_PLAYERS)] [p (count (filter #(= p (first %)) board))])
@@ -177,7 +188,7 @@
 
 ;; changed to be lazy
 
-(defn hdle-human [tree]
+(defn hdle-human_ [tree]
 　(let [moves (last tree)]
 　　(println (str "\n" "choose your move: "))
 
@@ -190,14 +201,36 @@
 　　　　　　(println (str cnt ". " "end turn")))
 　　　　　(recur (lazy-cadr m) (inc cnt)))))))
 
-;; changed to be lazy
+(defn hdle-human [tree]
+　(let [moves (last tree)]
+　　(println (str "\n" "choose your move: "))
 
-(defn play-vs-human [tree]
+　　(loop [m moves cnt 1]
+　　　(if (lazy-nil? m)
+　　　　(let [move (lazy-nth (dec (read)) moves)]
+　　　　　(list (first (rest move)) (first move)))
+　　　　(do
+　　　　　(if-let [[f t] (first (lazy-car m))]
+　　　　　　(println (str cnt ". " "[ " f " -> " t " ]"))
+　　　　　　(println (str cnt ". " "end turn")))
+　　　　　(recur (lazy-cadr m) (inc cnt)))))))
+
+;; changed to be lazy
+   
+(defn play-vs-human_ [tree]
 　(do
 　　(print-info tree)
 
 　　(if (lazy-nil? (last tree))
 　　　(announce-winner (first (rest tree)))
 　　　(recur (hdle-human tree)))))
+
+(defn play-vs-human [[tree attack]]
+　(do
+　　(print-info tree attack)
+
+　　(if (lazy-nil? (last tree))
+　　　(announce-winner (first (rest tree)))
+　　　(recur (hdle-human tree))))) 
 
 ;;==============================================
