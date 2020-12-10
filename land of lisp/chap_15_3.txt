@@ -25,7 +25,8 @@
 ;; user=> ((NEIGHBORS) 0)
 ;; (1 4 5)
 
-(def rate-position (memoize rate-position))
+;; NG
+;; (def rate-position (memoize rate-position))
 
 ;;==============================================
 
