@@ -4,7 +4,7 @@
 
 ;;===============
 
-(defmacro my-lazy [& body]
+(defmacro my-lazy_ [& body]
 　`(let [ forced# (atom false)
 　　　　　　value# (atom nil) ]
 　　(fn []
@@ -13,6 +13,9 @@
 　　　　　(reset! value# (do ~@body))
 　　　　　(reset! forced# true))
 　　　　(deref value#)))))
+
+(defmacro my-lazy [& body]
+　`(fn [] (do ~@body)))
 
 (defn my-force [lazy-value] (lazy-value))
 
