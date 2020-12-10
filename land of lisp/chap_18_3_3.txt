@@ -1,0 +1,46 @@
+;;===============
+
+;;[ １８章　遅延プログラミング　その３−３：AI 部分に「アルファ・ベータ法」を適用する　]
+
+;;===============
+
+(defn ab-rate-position [player upper_l lower_l tree]
+　(letfn [
+　　(ab-max [moves lower_l]
+　　　(if (not (lazy-nil? moves))
+　　　　(let [x (ab-rate-position player upper_l lower_l (first (rest (lazy-car moves)))) ]
+　　　　　(if (>= x upper_l)
+　　　　　　(list x)
+　　　　　　(cons x (ab-max (lazy-cadr moves) (max x lower_l)))))))
+
+　　(ab-min [moves upper_l]
+　　　(if (not (lazy-nil? moves))
+　　　　(let [x (ab-rate-position player upper_l lower_l (first (rest (lazy-car moves)))) ]
+　　　　　(if (<= x lower_l)
+　　　　　　(list x)
+　　　　　　(cons x (ab-min (lazy-cadr moves) (min x upper_l))))))) ]
+
+　(let [ t_child (last tree) ]
+　　(if (lazy-nil? t_child)
+　　　(score-board player (first (rest tree)))
+　　　(if (= (first tree) player)
+　　　　(apply max (ab-max t_child lower_l))
+　　　　(apply min (ab-min t_child upper_l)))))))
+
+;;==============================================
+
+;; changed by alpha-beta pruning
+
+(defn hdle-computer [tree]
+　(let [ player (first tree)
+　　　　　t_child (last tree)
+　　　　　t_limited (take-all (lazy-mapcar #(limit-tree-depth AI_LEVEL %) t_child))
+　　　　　t_grandchild (map #(first (rest %)) t_limited)
+　　　　　ratings (vec (map #(ab-rate-position player Long/MAX_VALUE (- Long/MAX_VALUE) %) t_grandchild))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+
+　　(list
+　　　(first (rest (lazy-nth idx t_child)))
+　　　(first (lazy-nth idx t_child)))))
+
+;;==============================================

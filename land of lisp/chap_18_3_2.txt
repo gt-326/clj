@@ -1,0 +1,63 @@
+;;===============
+
+;;[ １８章　遅延プログラミング　その３−２：AI 部分に「ヒューリスティックス」を適用する　]
+
+;;===============
+
+(defn threathened [board p_type p_dice n]
+　(loop [ [car & cdr] n ]
+　　(if (nil? car)
+　　　false
+　　　(let [ [n_type n_dice] (board car) ]
+　　　　(if (or (= p_type n_type) (>= p_dice n_dice))
+　　　　　(recur cdr)
+　　　　　true)))))
+
+(defn score-board [player board]
+　(apply +
+　　(for [ pos (BOARD-IDXES) :let [[type dice] (board pos)] ]
+　　　(if (= type player)
+　　　　(if (threathened board type dice ((NEIGHBORS) pos)) 1 2)
+　　　　-1))))
+
+;; changed by heuristics
+
+(defn rate-position [player tree]
+　(let [ t_child (last tree) ]
+　　(if (lazy-nil? t_child)
+　　　(score-board player (first (rest tree)))
+　　　(apply
+　　　　(if (= (first tree) player) max min)
+　　　　(take-all
+　　　　　(lazy-mapcar #(rate-position player (first (rest %))) t_child))))))
+
+;;==============================================
+
+(def AI_LEVEL 4)
+
+(defn limit-tree-depth [depth tree]
+　(list
+　　(first tree)
+　　(first (rest tree))
+
+　　(if (zero? depth)
+　　　(lazy-nil)
+　　　(lazy-mapcar
+　　　　#(list (first %) (limit-tree-depth (first (rest %)) (dec depth)))
+　　　　(last tree)))))
+
+;; changed by heuristics
+
+(defn hdle-computer [tree]
+　(let [ player (first tree)
+　　　　　t_child (last tree)
+　　　　　t_limited (take-all (lazy-mapcar #(limit-tree-depth AI_LEVEL %) t_child))
+　　　　　t_grandchild (map #(first (rest %)) t_limited)
+　　　　　ratings (vec (map #(rate-position player %) t_grandchild))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+
+　　(list
+　　　(first (rest (lazy-nth idx t_child)))
+　　　(first (lazy-nth idx t_child)))))
+
+;;==============================================

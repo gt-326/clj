@@ -16,6 +16,8 @@
 　　　　(take-all
 　　　　　(lazy-mapcar #(rate-position player (first (rest %))) t_child))))))
 
+(def rate-position (memoize rate-position))
+
 ;; changed to be lazy
 
 (defn hdle-computer [tree]
@@ -35,7 +37,7 @@
 
 　　(cond
 　　　(lazy-nil? (last tree)) (announce-winner (first (rest tree)))
-　　　(zero? (first tree)) (play-vs-computer (hdle-human tree))
-　　　:else (play-vs-computer (hdle-computer tree)))))
+　　　(zero? (first tree)) (recur (hdle-human tree))
+　　　:else (recur (hdle-computer tree)))))
 
 ;;==============================================
