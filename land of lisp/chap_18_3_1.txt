@@ -20,7 +20,7 @@
 
 ;; changed to be lazy
 
-(defn hdle-computer [tree]
+(defn hdle-computer_ [tree]
 　(let [ player (first tree)
 　　　　　t_child (last tree)
 　　　　　t_grandchild (lazy-mapcar #(first (rest %)) t_child)
@@ -29,11 +29,31 @@
 
 　　(first (rest (lazy-nth idx t_child)))))
 
+(defn hdle-computer [tree]
+　(let [ player (first tree)
+　　　　　t_child (last tree)
+　　　　　t_grandchild (lazy-mapcar #(first (rest %)) t_child)
+　　　　　ratings (vec (take-all (lazy-mapcar #(rate-position player %) t_grandchild)))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+
+　　(list
+　　　(first (rest (lazy-nth idx t_child)))
+　　　(first (lazy-nth idx t_child)))))
+
 ;; changed to be lazy
 
-(defn play-vs-computer [tree]
+(defn play-vs-computer_ [tree]
 　(do
 　　(print-info tree)
+
+　　(cond
+　　　(lazy-nil? (last tree)) (announce-winner (first (rest tree)))
+　　　(zero? (first tree)) (recur (hdle-human tree))
+　　　:else (recur (hdle-computer tree)))))
+
+(defn play-vs-computer [[tree attack]]
+　(do
+　　(print-info tree attack)
 
 　　(cond
 　　　(lazy-nil? (last tree)) (announce-winner (first (rest tree)))
