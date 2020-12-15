@@ -56,8 +56,6 @@
 　　　　　ratings (vec (map #(rate-position player %) t_grandchild))
 　　　　　idx (.indexOf ratings (apply max ratings)) ]
 
-　　(list
-　　　(first (rest (lazy-nth idx t_child)))
-　　　(first (lazy-nth idx t_child)))))
+　　(first (rest (lazy-nth idx t_child)))))
 
 ;;==============================================
