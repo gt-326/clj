@@ -1,0 +1,111 @@
+;;===============
+
+;;[ １９章　ダイス・オブ・ドゥームにグラフィカルな Web インタフェースをつける：その１ P401〜407 ]
+
+;;===============
+
+(def BOARD_WIDTH 900)
+(def BOARD_HEIGHT 500)
+(def BOARD_SCALE 64)
+
+(def TOP_OFFSET 3)
+(def DICE_SCALE 40)
+(def DOT-SIZE 0.05)
+
+(def UPPER_SIDE [[0 -1] [-0.6 -0.75] [0 -0.5] [0.6 -0.75]])
+(def LEFT_SIDE [[0 -0.5] [-0.6 -0.75] [-0.6 0] [0 0.25]])
+(def RIGHT_SIDE [[0 -0.5] [0.6 -0.75] [0.6 0] [0 0.25]])
+
+(def DIE_COLORS [[255 63 63] [50 100 50] [100 0 100] [63 63 255]])
+
+(def STARS [
+　　;; player_0
+　　[ [ 0.0 -0.75 ] ]
+　　;; player_1
+　　[ [ -0.25 -0.75 0.25 -0.75 ] ]
+　　;; player_2
+　　[ [ -0.25 -0.75  0.0 -0.75 0.25 -0.75 ] ]
+　　;; player_3
+　　[ [ -0.25 -0.75 0.0 -0.675 0.025 -0.85 0.25 -0.75 ] ] ])
+
+(defn create-stars [pos]
+　(mapcat #(partition 2 %) (STARS pos)))
+
+(defn calc-pt [x y [pt_x pt_y]]
+　[(+ x (* DICE_SCALE pt_x)) (+ y (* DICE_SCALE pt_y))])
+
+(defn fill-stars [x y pairs]
+　(letfn [(fnc [x1 y1 [x2 y2]] (calc-pt x y [(+ x1 (* x2 DOT-SIZE)) (+ y1 (* y2 DOT-SIZE))]))]
+　　(apply str
+　　　(map
+　　　　(fn [[x3 y3]]
+　　　　　(polygon-fn
+　　　　　　(mapcat #(fnc x3 y3 %) [[-1 -1] [-1 1] [1 1] [1 -1]])
+　　　　　　'(255 255 255)
+　　　　　　-100))
+　　　　pairs))))
+
+(defn draw-die-svg [x y col pairs]
+　(apply str
+　　(concat
+　　　;; faces
+　　　(for [[p c] [ [UPPER_SIDE (brightness col 40)]
+　　　　　　　　　　　[LEFT_SIDE col]
+　　　　　　　　　　　[RIGHT_SIDE (brightness col -40)] ] ]
+　　　　(polygon-fn (mapcat #(calc-pt x y %) p) c -100))
+
+　　　;; stars
+　　　(fill-stars x y pairs))))
+
+;;----------------------------------------------
+
+(defn draw-tile-svg [x y p_type p_dice x2 y2 col]
+　(str
+　　;; board
+　　(apply str
+　　　(for [z (range 2)]
+　　　　(polygon-fn
+　　　　　(mapcat
+　　　　　　(fn [[pt_x pt_y]]
+　　　　　　　[ (+ x2 (* BOARD_SCALE pt_x))
+　　　　　　　　(+ y2 (* BOARD_SCALE (+ pt_y (* (- 1 z) 0.1)))) ])
+　　　　　　[ [-1 -0.2] [0 -0.5] [1 -0.2] [1 0.2] [0 0.5] [-1 0.2] ])
+　　　　　col
+　　　　　-100)))
+
+　　　;; dice
+　　　(apply str
+　　　　(for [z (range p_dice)]
+　　　　　(draw-die-svg (+ x2 (* DICE_SCALE 0.3 (if (odd? (+ x y z)) -0.3 0.3)))
+　　　　　　　　　　　　　 (- y2 (* DICE_SCALE z 0.8))
+　　　　　　　　　　　　　　col
+　　　　　　　　　　　　　　(create-stars p_type))))))
+
+;;----------------------------------------------
+
+(defn make-game-link [pos]
+　(format "/game?chosen=%s" pos))
+
+(defn draw-board-svg [board chosen-tile leagal-tiles]
+　(for [x (range BOARD_SIZE) y (range BOARD_SIZE)
+　　:let [ pos (+ x (* BOARD_SIZE y))
+　　　　　　[p_type p_dice] (board pos)
+　　　　　　x2 (* BOARD_SCALE (+ (* 2 x) (- BOARD_SIZE y)))
+　　　　　　y2 (* BOARD_SCALE (+ (* y 0.7) TOP_OFFSET))
+　　　　　　col (brightness (DIE_COLORS p_type) (* -15 (- BOARD_SIZE y)))
+　　　　　　selected (= (str pos) chosen-tile) ] ]
+
+　　(if (or (some #{pos} leagal-tiles) selected)
+　　　(tag g ()
+　　　　(tag a ("xlink:href" (make-game-link pos))
+　　　　　(draw-tile-svg x y p_type p_dice x2 y2
+　　　　　　(if selected (brightness col 100) col))))
+　　　(draw-tile-svg x y p_type p_dice x2 y2 col))))
+
+;;----------------------------------------------
+
+;; 実行時
+;; (let [board (gen-board BOARD_HEXNUM NUM_PLAYERS MAX_DICE)]
+;; 　(str->svg "test3" (fn [] (svg BOARD_WIDTH BOARD_HEIGHT (draw-board-svg board (dec (count board)) nil)))))
+
+;;==============================================

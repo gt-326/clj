@@ -1,0 +1,141 @@
+;;===============
+
+;;[ １９章　ダイス・オブ・ドゥームにグラフィカルな Web インタフェースをつける：その２ P407〜412 ]
+
+;;===============
+
+(defn web-announce-winner [board]
+　(let [players (winners board)]
+　　(str
+　　　(if (= 1 (count players))
+　　　　(str "<br>" "[ The winner is " (player-letter (first players)) " ]")
+　　　　(str "<br>" "[ The game is a tie between "
+　　　　　(.trim (apply str (map #(str (player-letter %) " ") players))) " ]"))
+　　　(tag a (href "/game") "[ play again ]"))))
+
+(defn web-hndl-computer [tree]
+　(do
+　　(reset! tree (hdle-computer @tree))
+　　(str
+　　　"The computer has moved."
+　　　(tag script ()
+　　　　"window.setTimeout('window.location=\"game?chosen=nil\"', 2500)"))))
+
+(defn web-hndl-human [pos tree from-tile]
+　(cond
+　　(or (nil? pos) (= pos "nil"))
+　　　"Please choose a hex to move from:"
+　　(= pos "pass")
+　　　(do
+　　　　(reset! tree (first (rest (lazy-car (last @tree)))))
+　　　　(str
+　　　　　"Your reinforcements have been placed. "
+　　　　　(tag a (href (make-game-link nil)) "[continue]")))
+　　(not @from-tile)
+　　　(do
+　　　　(reset! from-tile pos)
+　　　　"Now choose a destination:")
+　　(= pos @from-tile)
+　　　(do
+　　　　(reset! from-tile nil)
+　　　　"Move cancelled.")
+　　:else
+　　　(do
+　　　　(reset! tree
+　　　　　(first (rest
+　　　　　　(lazy-find-if
+　　　　　　　#(let [[from to] (first %)]
+　　　　　　　　(and (= @from-tile (str from)) (= pos (str to))))
+　　　　　　　(last @tree)))))
+
+　　　　(reset! from-tile nil)
+
+　　　　(str
+　　　　　"You may now "
+　　　　　(tag a (href (make-game-link 'pass)) "pass")
+　　　　　" or make another move:"))))
+
+;;==============================================
+
+(defn draw-dod-page [tree selected-tile]
+　(svg
+　　BOARD_WIDTH
+　　BOARD_HEIGHT
+
+　　(draw-board-svg
+　　　(first (rest tree))
+　　　selected-tile
+
+　　　(remove nil?
+　　　　(set
+　　　　　(take-all
+　　　　　　(if selected-tile
+　　　　　　　(lazy-mapcar
+　　　　　　　　#(if (= (str (first (first %))) (str selected-tile))
+　　　　　　　　　(first (rest (first %))))
+　　　　　　　　(last tree))
+　　　　　　　(lazy-mapcar #(first (first %)) (last tree)))))))))
+
+(let [ CUR_GAME_TREE (atom nil)
+　　　　FROM_TILE (atom nil)
+　　　　CHOSEN (atom nil) ]
+
+　(defn dod-request-handler [line encode]
+　　(letfn [(web-initialize []
+　　　(do
+　　　　(reset! FROM_TILE nil)
+　　　　(reset! CUR_GAME_TREE (gen-game-tree 0 false))
+　　　　(reset! CHOSEN nil))) ]
+
+　　　(let [ url (parse-request-line encode (first line))
+　　　　　　　path (first url)
+　　　　　　　params (first (rest url)) ]
+
+　　　　(if (= path "/quit")
+　　　　　(do
+　　　　　　(web-initialize)
+　　　　　　"bye!")
+
+　　　　　(if (not-any? #{path} ["/game" "/favicon.ico"])
+　　　　　　"Sorry... I don't know that page."
+
+　　　　　　(if (= path "/game")
+　　　　　　　(do
+　　　　　　　　(if (or (nil? @CUR_GAME_TREE) (nil? params)) (web-initialize))
+　　　　　　　　(if params (reset! CHOSEN (params 'CHOSEN)))
+
+　　　　　　　　(let [content
+　　　　　　　　　(str
+　　　　　　　　　　(tag center ()
+　　　　　　　　　　　"Welcome to DICE OF DOOM! " (tag a (href "/quit") "[ quit ]")
+　　　　　　　　　　　(tag br ())
+
+　　　　　　　　　　　(cond
+　　　　　　　　　　　　(lazy-nil? (last @CUR_GAME_TREE))
+　　　　　　　　　　　　　(web-announce-winner (first (rest @CUR_GAME_TREE)))
+　　　　　　　　　　　　(zero? (first @CUR_GAME_TREE))
+　　　　　　　　　　　　　(web-hndl-human @CHOSEN CUR_GAME_TREE FROM_TILE)
+　　　　　　　　　　　　:else
+　　　　　　　　　　　　　(web-hndl-computer CUR_GAME_TREE))
+
+　　　　　　　　　　　(tag br ())
+　　　　　　　　　　　(draw-dod-page @CUR_GAME_TREE @FROM_TILE))) ]
+
+　　　　　　　　　(clojure.pprint/cl-format false
+　　　　　　　　　　"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length:~a\r\n\r\n~a"
+　　　　　　　　　　(count content) content))))))
+))))
+
+;;==============================================
+
+;; 実行時
+;; (serve dod-request-handler "UTF8")
+
+;; 接続が切れるのか、以下のようにエラーが出ることがある。
+;; その原因を究明中。[201221]
+
+;; user=> (serve dod-request-handler "UTF8")
+;; Execution error (NullPointerException) at java.util.regex.Matcher/getTextLength (Matcher.java:1283).
+;; null
+
+;;==============================================
