@@ -1,0 +1,53 @@
+;;==============================================
+;; svg （補助関数、マクロ）
+;;==============================================
+
+(defmacro svg [width height & body]
+　`(tag ~'svg ( ~'xmlns "http://www.w3.org/2000/svg"
+　　　　　　　　"xmlns:xlink" "http://www.w3.org/1999/xlink" ~'height , ~height ~'width , ~width)
+　　　　　　　　~@body))
+
+(defn print-tag [n alist closing?]
+　(apply str
+　　(concat
+　　　"<"
+　　　(if closing?
+　　　　(str "/" (.toLowerCase (str n)))
+　　　　(concat
+　　　　　(.toLowerCase (str n))
+　　　　　(for [att alist]
+　　　　　　(format " %s=\"%s\""
+　　　　　　　(.toLowerCase (str (first att)))
+　　　　　　　(first (rest att))))))
+　　　">")))
+
+(defmacro tag [name atts & body]
+　`(apply str
+　　(concat
+　　(print-tag
+　　　'~name
+　　　(list ~@(for [[x# y#] (partition 2 atts)] `(list '~x# ~y#)))
+　　　false)
+　　~@body
+　　(print-tag '~name nil true))))
+
+(defn brightness [col amt]
+　(for [x col] (min 255 (max 0 (+ x amt)))))
+
+(defn svg-style-fn [color num]
+　(apply
+　　(fn [a1 a2 a3 a4 a5 a6]
+　　　(format "fill:rgb(%s, %s, %s); stroke:rgb(%s, %s, %s)" a1 a2 a3 a4 a5 a6))
+　　(concat color (brightness color num))))
+
+(defn polygon-fn [points color num]
+　(tag polygon
+　　(style (svg-style-fn color num)
+　　　points
+　　　(apply str (for [[a b] (partition 2 points)] (format "%s,%s " a b))))))
+
+(defn str->svg [fname thunk]
+　(with-open [fout (clojure.java.io/writer (str fname ".svg"))]
+　　(.write fout (thunk))))
+
+;;==============================================

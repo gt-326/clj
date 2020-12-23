@@ -1,0 +1,218 @@
+;;===============
+
+;;[ ２０章　ダイス・オブ・ドゥームをさらに面白く：P417〜426 ]
+
+;;===============
+
+(def AI_LEVEL 2)
+(def NUM_PLAYERS 4)
+(def MAX_DICE 5)
+
+;;==============================================
+
+(defn board-attack-fail [board src]
+　(let [ [player _] (board src) ]
+　　(loop [[car & cdr] board n 0 rslt []]
+　　　(if (nil? car)
+　　　　rslt
+　　　　(recur cdr (inc n)
+　　　　　(conj rslt
+　　　　　　(if (= n src) [player 1] car)))))))
+
+(defn game-tree [board player spare-dice first-move]
+　(letfn [ (fn_attack [p n]
+　　(list (list [p n]
+　　　;; tree
+　　　(game-tree
+　　　　(board-attack board p n)
+　　　　player
+　　　　(+ spare-dice ((board n) 1))
+　　　　false)
+　　　;; tree fail
+　　　(game-tree
+　　　　(board-attack-fail board p)
+　　　　player
+　　　　(+ spare-dice ((board n) 1))
+　　　　false)))) ]
+
+　　(list player board
+　　　(if first-move
+　　　　;; true
+　　　　(search-capable-moves board player fn_attack)
+
+　　　　;; false
+　　　　(lazy-cons
+　　　　　(list nil
+　　　　　　(game-tree
+　　　　　　　(add-new-dice board player (dec spare-dice))
+　　　　　　　(rem (inc player) NUM_PLAYERS)
+　　　　　　　0
+　　　　　　　true))
+　　　　　(search-capable-moves board player fn_attack))))))
+
+;;==============================================
+
+(defn roll-dice [[player dice-num]]
+　(let [total (apply + (repeatedly dice-num #(inc (rand-int 6)))) ]
+　　(clojure.pprint/cl-format true
+　　　"[player~s] On ~s dice rolled ~2d. \n" (player-letter player) dice-num total)
+　　total))
+
+(defn roll-against [src dst]
+　(> (roll-dice src) (roll-dice dst)))
+
+(defn pick-chance-branch [board move]
+　(let [ path (first move) ]
+　　(if (or (nil? path)
+　　　　　　　(roll-against
+　　　　　　　　(board (first path))
+　　　　　　　　(board (first (rest path)))))
+　　　;; tree
+　　　(first (rest move))
+　　　;; tree fail
+　　　(last move))))
+
+;;==============================================
+
+(defn web-hndl-human [pos tree from-tile]
+　(cond
+　　(or (nil? pos) (= pos "nil"))
+　　　"Please choose a hex to move from:"
+　　(= pos "pass")
+　　　(do
+　　　　(reset! tree (first (rest (lazy-car (last @tree)))))
+　　　　(str
+　　　　　"Your reinforcements have been placed. "
+　　　　　(tag a (href (make-game-link nil)) "[continue]")))
+　　(not @from-tile)
+　　　(do
+　　　　(reset! from-tile pos)
+　　　　"Now choose a destination:")
+　　(= pos @from-tile)
+　　　(do
+　　　　(reset! from-tile nil)
+　　　　"Move cancelled.")
+　　:else
+　　　(do
+　　　　(reset! tree
+　　　　　(pick-chance-branch
+　　　　　　(first (rest @tree))
+　　　　　　(lazy-find-if
+　　　　　　　#(let [[from to] (first %)]
+　　　　　　　　　(and (= @from-tile (str from)) (= pos (str to))))
+　　　　　　　(last @tree))))
+
+　　　　(reset! from-tile nil)
+
+　　　　(str
+　　　　　"You may now "
+　　　　　(tag a (href (make-game-link 'pass)) "pass")
+　　　　　" or make another move:"))))
+
+(defn hdle-computer [tree]
+　(let [ player (first tree)
+　　　　　tree_limited (limit-tree-depth AI_LEVEL tree)
+　　　　　t_child (last tree_limited)
+　　　　　t_grandchild (take-all (lazy-mapcar #(first (rest %)) t_child))
+　　　　　ratings (vec (map #(rate-position player %) t_grandchild))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+
+　　(pick-chance-branch
+　　　(first (rest tree))
+　　　(lazy-nth idx t_child))))
+
+;;==============================================
+
+(def DICE-PROBABILITY [ [0.84 0.97 1.0 1.0]
+　　　　　　　　　　　　　　[0.44 0.78 0.94 0.99]
+　　　　　　　　　　　　　　[0.15 0.45 0.74 0.91]
+　　　　　　　　　　　　　　[0.04 0.19 0.46 0.72]
+　　　　　　　　　　　　　　[0.01 0.06 0.22 0.46] ])
+
+(defn dice-fn [board pos]
+　(first (rest (board pos))))
+
+(defn get-probabilty [board [src dst]]
+　((DICE-PROBABILITY (dec (dice-fn board dst))) (- (dice-fn board src) 2)))
+
+(defn rate-position [player tree]
+　(if (lazy-nil? (last tree))
+　　(score-board player (first (rest tree)))
+　　(apply
+　　　(if (= (first tree) player) max min)
+　　　　(take-all
+　　　　　(lazy-mapcar
+　　　　　　#(if (first %)
+　　　　　　　(let [ board (first (rest tree))
+　　　　　　　　　　　probability (get-probabilty board (first %)) ]
+　　　　　　　　(+ (* probability (rate-position player (first (rest %))))
+　　　　　　　　　　(* (dec probability) (rate-position player (last %)))))
+　　　　　　　(rate-position player (first (rest %))))
+　　　　　　(last tree))))))
+
+;;==============================================
+
+(defn limit-tree-depth [depth tree]
+　(list
+　　(first tree)
+　　(first (rest tree))
+
+　　(if (zero? depth)
+　　　(lazy-nil)
+　　　(lazy-mapcar
+　　　　(fn [move]
+　　　　　(cons
+　　　　　　(first move)
+　　　　　　(map #(limit-tree-depth (dec depth) %) (rest move))))
+　　　　(last tree)))))
+
+;;==============================================
+
+(defn own-tile-unchaecked? [board pos player visited]
+　(and (= (first (board pos)) player)
+　　　　(not (some #{pos} (vec visited)))))
+
+(defn get-connected [board player pos]
+　(loop [[car & cdr] ((NEIGHBORS) pos) n 0 visited ()]
+　　(if (nil? car)
+　　　visited
+　　　(recur
+　　　　cdr
+　　　　(inc n)
+　　　　(if (own-tile-unchaecked? board pos player visited)
+　　　　　(cons car (if (= n 0) (cons pos visited) visited))
+　　　　　visited)))))
+
+(defn largest-cluster-size [board player]
+　(loop [pos 0 best 0 visited ()]
+　　(if (>= pos BOARD_HEXNUM)
+　　　best
+　　　(let [ flg (own-tile-unchaecked? board pos player visited)
+　　　　　　　cluster (get-connected board player pos)
+　　　　　　　size (count cluster) ]
+　　　　(recur
+　　　　　(inc pos)
+　　　　　(if flg (if (> size best) size best) best)
+　　　　　(if flg (concat cluster visited) visited))))))
+
+
+(defn add-new-dice [board player _]
+　(loop [ [car & cdr] board
+　　　　　　n (largest-cluster-size board player)
+        　rslt [] ]
+　　(cond
+　　　(nil? car) rslt
+　　　(zero? n) (vec (concat rslt (cons car cdr)))
+　　　:else (let [ [cur-player cur-dice] car
+　　　　　　　　　　　flg (and (= cur-player player) (< cur-dice MAX_DICE)) ]
+　　　　(recur
+　　　　　cdr
+　　　　　(if flg (dec n) n)
+　　　　　(conj rslt (if flg [cur-player (inc cur-dice)] car)))))))
+
+;;==============================================
+
+;; 実行時
+;; (serve dod-request-handler "UTF8")
+
+;;==============================================

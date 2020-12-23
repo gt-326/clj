@@ -1,0 +1,85 @@
+;;==============================================
+;; server
+;;==============================================
+
+(defn http-char [[c1 & c2]]
+　(Integer/parseInt (str (char c1) (char (first c2))), 16))
+
+(defn decode-params [s encode]
+　(loop [[car & cdr] (for [b (.getBytes s encode)] b) rslt []]
+　　(if (nil? car)
+　　　(String. (byte-array rslt) encode)
+　　　(cond
+　　　　(= car (byte \%)) (recur (rest (rest cdr))
+　　　　　(conj rslt (try (http-char cdr) (catch NumberFormatException e (byte \space)))))
+　　　　(= car (byte \+)) (recur cdr (conj rslt (int \space)))
+　　　　:else (recur cdr (conj rslt car))))))
+
+(defn div-by [s sep] (clojure.string/split s sep))
+
+(defn parse-params [s encode]
+　(apply conj
+　　(for [ pair (div-by s #"&") :let [[i1 i2] (div-by pair #"=")] ]
+　　　(if (nil? i2)
+　　　　i1
+　　　　{(symbol (.toUpperCase i1)) (decode-params i2 encode)}))))
+
+(defn parse-request-line [encode s]
+　(let [[i1 i2] (div-by (first (rest (div-by s #" "))) #"\?")]
+　　(vec
+　　　(concat
+　　　　(list (parse-params i1 encode))
+　　　　(if (not (nil? i2))
+　　　　　(list (parse-params i2 encode)))))))
+
+(defn get-header [s]
+　(loop [ [car & cdr] (for [val (vec s) :when (clojure.string/includes? val ":")] val)
+　　　　　　rslt {} ]
+　　(if (nil? car)
+　　　rslt
+　　　(recur cdr
+　　　　(conj rslt
+　　　　　{ (symbol (.toUpperCase (first (div-by car #"\:"))))
+　　　　　　(.trim (clojure.string/replace (first (rest (div-by car #"\:")))  ": " "")) }
+)))))
+
+(defn get-content-params [content header encode]
+　(let [len (header 'CONTENT-LENGTH)]
+　　(when len
+　　　(parse-params
+　　　　(subs
+　　　　　(clojure.string/replace content "&amp;" "&")
+　　　　　0 (Integer/parseInt len))
+　　　　encode))))
+
+;;==============================================
+
+(import '(java.io StringReader InputStreamReader BufferedReader BufferedWriter OutputStreamWriter)
+　　　　　'(java.net ServerSocket))
+
+;; only for GET request
+
+(defn serve [hdlr encode]
+　(with-open [socket (ServerSocket. 8080)]
+　　(while true
+　　　(with-open [ stream (. socket accept)
+　　　　　　　　　　　w (BufferedWriter. (OutputStreamWriter. (.getOutputStream stream)))
+　　　　　　　　　　　r (BufferedReader. (InputStreamReader. (.getInputStream stream))) ]
+　　　　(let [ content (hdlr (line-seq r) encode) ]
+　　　　　(if content
+　　　　　　(do
+　　　　　　　;;(println content)
+　　　　　　　(. w write content)
+　　　　　　　(.flush w)
+
+　　　　　　　(if (= "bye!" content)
+　　　　　　　　(do
+　　　　　　　　　(.close stream)
+　　　　　　　　　(.close socket))))))))))
+
+;;----------------------------------------------
+
+;; 実行時
+;; user=> (serve hello-request-handler "UTF8")
+
+;;==============================================

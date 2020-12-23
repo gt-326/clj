@@ -1,0 +1,289 @@
+;;==============================================
+;; Dice of doom ver.2
+;;==============================================
+
+(def AI_LEVEL 4)
+(def NUM_PLAYERS 2)
+(def MAX_DICE 3)
+(def BOARD_SIZE 5)
+(def BOARD_HEXNUM (* BOARD_SIZE BOARD_SIZE))
+
+(def BOARD_IDXES (memoize (fn [] (range BOARD_HEXNUM))))
+
+(defn neighbors [idx]
+　(let [ up (- idx BOARD_SIZE)
+　　　　　down (+ idx BOARD_SIZE)
+　　　　　idxes (concat (list up down)
+　　　　　　(if (pos? (rem idx BOARD_SIZE)) (list (dec up) (dec idx)))
+　　　　　　(if (pos? (rem (inc idx) BOARD_SIZE)) (list (inc idx) (inc down)))) ]
+
+　　(sort (vec (for [i idxes :when (and (<= 0 i) (< i BOARD_HEXNUM))] i)))))
+
+(def NEIGHBORS (memoize (fn [] (vec (map #(neighbors %) (BOARD_IDXES))))))
+
+;;==============================================
+
+(defn gen-board [board player dice]
+　(vec (repeatedly board #(vec (list (rand-int player) (inc (rand-int dice)))))))
+
+(defn player-letter [n]
+　(char (+ 97 n)))
+
+(defn draw-board [board]
+　(letfn [ (fnc [[player dice] idx]
+　　(str
+　　　;; space
+　　　(if (= 0 (rem idx BOARD_SIZE))
+　　　　(apply str (repeat (- BOARD_SIZE (quot idx BOARD_SIZE)) "  ")) "")
+　　　;; pos
+　　　"[" (player-letter player) "-" dice "]"
+　　　;; newline
+　　　(if (= 0 (rem (inc idx) BOARD_SIZE)) "\n" " "))) ]
+
+　　(print (apply str (map #(fnc (board %) %) (BOARD_IDXES))))))
+
+;;==============================================
+
+(defn board-attack [board src dst]
+　(let [ [player dice] (board src) ]
+　　(loop [[car & cdr] board n 0 rslt []]
+　　　(if (nil? car)
+　　　　rslt
+　　　　(recur cdr (inc n)
+　　　　　(conj rslt
+　　　　　　(cond
+　　　　　　　(= n src) [player 1]
+　　　　　　　(= n dst) [player (dec dice)]
+　　　　　　　:else car)))))))
+
+(defn add-new-dice [board player spare-dice]
+　(loop [[car & cdr] board n spare-dice rslt []]
+　　(cond
+　　　(nil? car) rslt
+　　　(zero? n) (vec (concat rslt (cons car cdr)))
+　　　:else (let [ [cur-player cur-dice] car
+　　　　　　　　　　　flg (and (= cur-player player) (< cur-dice MAX_DICE)) ]
+　　　　(recur
+　　　　　cdr
+　　　　　(if flg (dec n) n)
+　　　　　(conj rslt (if flg [cur-player (inc cur-dice)] car)))))))
+
+;;==============================================
+
+;; changed to be lazy
+
+(defn search-capable-moves [board player fnc]
+　(make-lazy
+　　(apply concat
+　　　(for [ p (BOARD_IDXES)
+　　　　:let [[p_type p_dice] (board p)]
+　　　　:when (= player p_type) ]
+
+　　　　(apply concat
+　　　　　(for [ n ((NEIGHBORS) p)
+　　　　　　:let [[n_type n_dice] (board n)]
+　　　　　　:when (and (> p_dice n_dice) (not (= p_type n_type))) ]
+
+　　　　　　(fnc p n)))))))
+
+;; changed to be lazy
+
+(defn game-tree [board player spare-dice first-move]
+　(letfn [ (fn_attack [p n]
+　　(list (list [p n]
+　　　(game-tree
+　　　　(board-attack board p n)
+　　　　player
+　　　　(+ spare-dice ((board n) 1))
+　　　　false)))) ]
+
+　　(list player board
+　　　(if first-move
+　　　　;; true
+　　　　(search-capable-moves board player fn_attack)
+
+　　　　;; false
+　　　　(lazy-cons
+　　　　　(list nil
+　　　　　　(game-tree
+　　　　　　　(add-new-dice board player (dec spare-dice))
+　　　　　　　(rem (inc player) NUM_PLAYERS)
+　　　　　　　0
+　　　　　　　true))
+　　　　　(search-capable-moves board player fn_attack))))))
+
+;; changed to be lazy
+
+(defn gen-game-tree [player disp-flg]
+　(loop [ board (gen-board BOARD_HEXNUM NUM_PLAYERS MAX_DICE)
+　　　　　　tree (game-tree board player 0 true) ]
+
+　　(if (lazy-nil? (last tree))
+　　　(recur
+　　　　(gen-board BOARD_HEXNUM NUM_PLAYERS MAX_DICE)
+　　　　(game-tree board player 0 true))
+　　　(do
+　　　　(if disp-flg (println (str "[board] : " board)))
+　　　　tree))))
+
+;;==============================================
+
+(defn print-info [tree attack]
+　(do
+　　(println
+　　　(str "\n" "current player = " (player-letter (first tree))
+　　　　(if attack
+　　　　　(str " : [ " (first attack) " -> " (first (rest attack)) " ]"))))
+
+　　(draw-board (first (rest tree)))))
+
+(defn winners [board]
+　(let [ totals (for [p (range NUM_PLAYERS)] [p (count (filter #(= p (first %)) board))])
+　　　　　[_ best] (apply map max totals) ]
+　　(for [[p sum] totals :when (= best sum)] p)))
+
+(defn announce-winner [board]
+　(let [players (winners board)]
+　　(println
+　　　(if (= 1 (count players))
+　　　　(str "\n" "[ The winner is " (player-letter (first players)) " ]")
+　　　　(str "\n" "[ The game is a tie between "
+　　　　　(.trim (apply str (map #(str (player-letter %) " ") players))) " ]")))))
+
+;; changed to be lazy
+
+(defn hdle-human [tree]
+　(let [moves (last tree)]
+　　(println (str "\n" "choose your move: "))
+
+　　(loop [m moves cnt 1]
+　　　(if (lazy-nil? m)
+　　　　(let [move (lazy-nth (dec (read)) moves)]
+　　　　　(list (first (rest move)) (first move)))
+　　　　(do
+　　　　　(if-let [[f t] (first (lazy-car m))]
+　　　　　　(println (str cnt ". " "[ " f " -> " t " ]"))
+　　　　　　(println (str cnt ". " "end turn")))
+　　　　　(recur (lazy-cadr m) (inc cnt)))))))
+
+;; changed to be lazy
+
+(defn play-vs-human-v2 [[tree attack]]
+　(do
+　　(print-info tree attack)
+
+　　(if (lazy-nil? (last tree))
+　　　(announce-winner (first (rest tree)))
+　　　(recur (hdle-human tree)))))
+
+;;==============================================
+
+(defn threathened [board p_type p_dice n]
+　(loop [ [car & cdr] n ]
+　　(if (nil? car)
+　　　false
+　　　(let [ [n_type n_dice] (board car) ]
+　　　　(if (or (= p_type n_type) (>= p_dice n_dice))
+　　　　　(recur cdr)
+　　　　　true)))))
+
+(defn score-board [player board]
+　(apply +
+　　(for [ pos (BOARD_IDXES) :let [[type dice] (board pos)] ]
+　　　(if (= type player)
+　　　　(if (threathened board type dice ((NEIGHBORS) pos)) 1 2)
+　　　　-1))))
+
+;; changed by heuristics
+
+(defn rate-position [player tree]
+　(let [ t_child (last tree) ]
+　　(if (lazy-nil? t_child)
+　　　(score-board player (first (rest tree)))
+　　　(apply
+　　　　(if (= (first tree) player) max min)
+　　　　(take-all
+　　　　　(lazy-mapcar #(rate-position player (first (rest %))) t_child))))))
+
+(defn ab-rate-position [player upper_l lower_l tree]
+　(letfn [
+　　(ab-max [player upper lower moves]
+　　　(if (not (lazy-nil? moves))
+　　　　(let [x (ab-rate-position player upper lower (first (rest (lazy-car moves)))) ]
+　　　　　(if (< x upper)
+　　　　　　(cons x (ab-max player upper (max x lower) (lazy-cadr moves)))
+　　　　　　(list x)))))
+
+　　(ab-min [player upper lower moves]
+　　　(if (not (lazy-nil? moves))
+　　　　(let [x (ab-rate-position player upper lower (first (rest (lazy-car moves)))) ]
+　　　　　(if (> x lower)
+　　　　　　(cons x (ab-min player (min x upper) lower (lazy-cadr moves)))
+　　　　　　(list x))))) ]
+
+　　(let [ t_child (last tree) ]
+　　　(if (lazy-nil? t_child)
+　　　　(score-board player (first (rest tree)))
+　　　　(if (= (first tree) player)
+　　　　　(apply max (ab-max player upper_l lower_l t_child))
+　　　　　(apply min (ab-min player upper_l lower_l t_child)))))))
+
+;;==============================================
+
+(defn limit-tree-depth [depth tree]
+　(list
+　　(first tree)
+　　(first (rest tree))
+　　(if (zero? depth)
+　　　(lazy-nil)
+　　　(lazy-mapcar
+　　　　#(list (first %)
+　　　　　　　　　(limit-tree-depth (dec depth) (first (rest %))))
+　　　　(last tree)))))
+
+;; changed by alpha-beta pruning
+
+(defn hdle-computer [tree]
+　(let [ player (first tree)
+　　　　　tree_limited (limit-tree-depth AI_LEVEL tree)
+　　　　　t_child (last tree_limited)
+　　　　　t_grandchild (take-all (lazy-mapcar #(first (rest %)) t_child))
+　　　　　ratings (vec (map #(ab-rate-position player Long/MAX_VALUE (- Long/MAX_VALUE) %) t_grandchild))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+
+　　(list
+　　　(first (rest (lazy-nth idx t_child)))
+　　　(first (lazy-nth idx t_child)))))
+
+;; no use hdle-computer which alpha-beta pruning ver. for web interface version.
+
+(defn hdle-computer [tree]
+　(let [ player (first tree)
+　　　　　tree_limited (limit-tree-depth AI_LEVEL tree)
+　　　　　t_child (last tree_limited)
+　　　　　t_grandchild (take-all (lazy-mapcar #(first (rest %)) t_child))
+　　　　　ratings (vec (map #(rate-position player %) t_grandchild))
+　　　　　idx (.indexOf ratings (apply max ratings)) ]
+
+　　(first (rest (lazy-nth idx t_child)))))
+
+;;==============================================
+
+;; changed by alpha-beta pruning
+
+(defn play-vs-computer-v2 [[tree attack]]
+　(do
+　　(print-info tree attack)
+
+　　(cond
+　　　(lazy-nil? (last tree)) (announce-winner (first (rest tree)))
+　　　(zero? (first tree)) (recur (hdle-human tree))
+　　　:else (recur (hdle-computer tree)))))
+
+;;==============================================
+
+;; 実行時
+;; (play-vs-human-v2 (list (gen-game-tree 0)))
+;; (play-vs-computer-v2 (list (gen-game-tree 0)))
+
+;;==============================================
