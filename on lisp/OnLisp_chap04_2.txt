@@ -1,0 +1,382 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+=====================================
+4.5 マッピング (P54-57)
+=====================================
+
+(defn _mapa-b
+　([fnc a b] (_mapa-b fnc a b 1))
+　([fnc a b step]
+　　(loop [i a rslt ()]
+　　　(if (> i b)
+　　　　(reverse rslt)
+　　　　(recur
+　　　　　(+ i step)
+　　　　　(cons (fnc i) rslt))))))
+
+(defn mapa-b
+　([fnc a b] (mapa-b fnc a b 1))
+　([fnc a b step]
+　　(map fnc (range a (+ b step) step))))
+
+----------------------------------
+
+(defn map0-n
+　([fnc n] (map0-n fnc n 1))
+　([fnc n step]
+　　(_mapa-b fnc 0 n step)))
+
+(defn map1-n
+　([fnc n] (map1-n fnc n 1))
+　([fnc n step]
+　　(_mapa-b fnc 1 n step)))
+
+----------------------------------
+
+user=> (range 0 (+ 5 0.5) 0.5)
+(0 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0)
+
+user=> (map #(* % %) (range 0 (+ 5 0.5) 0.5))
+(0 0.25 1.0 2.25 4.0 6.25 9.0 12.25 16.0 20.25 25.0)
+
+user=> (map0-n identity 10 0.5)
+(0 0.5 1.0 1.5 2.0 2.5 3.0 3.5 4.0 4.5 5.0 5.5 6.0 6.5 7.0 7.5 8.0 8.5 9.0 9.5 10.0)
+
+user=> (map1-n identity 10)
+(1 2 3 4 5 6 7 8 9 10)
+
+----------------------------------
+
+(defn _mapa-b
+　([fnc a b] (_mapa-b fnc a b 1))
+　([fnc a b step]
+　　(loop [i a rslt ()]
+　　　(if (> i b)
+　　　　(reverse rslt)
+　　　　(recur
+　　　　　(+ i step)
+　　　　　(cons (fnc i) rslt))))))
+
+----------------------------------
+
+(defn map-> [fnc start test-fn succ-fn]
+　(loop [i start rslt ()]
+　　(if (test-fn i)
+　　　(reverse rslt)
+　　　(recur
+　　　　(succ-fn i)
+　　　　(cons (fnc i) rslt)))))
+
+;; [ "mapa-b_2" is defined by using "map->". ]
+
+(defn mapa-b_2
+　([fnc a b] (mapa-b_2 fnc a b 1))
+　([fnc a b step]
+　　(map->
+　　　fnc
+　　　a
+　　　#(> % b)
+　　　#(+ % step))))
+
+=====================================
+
+;; [ そもそも mapcan って、どんな挙動だっけ？ ]
+
+;; (mapcan #'(lambda (x y) (if (null x) nil (list x y)))
+;;           '(nil nil nil d e)
+;;           '(1 2 3 4 5 6))
+;; =>  (D 4 E 5)
+
+;; (mapcan #'(lambda (x) (and (numberp x) (list x)))
+;;           '(a 1 b c 3 4 d 5))
+;; =>  (1 3 4 5)
+
+-------------------------------------
+
+;; [ step.1 lst : single flat list ]
+
+(defn foo [fnc lst]
+　(map #(fnc %) lsts)
+
+user=> (foo #(if (not (zero? %)) (list %)) '(1 2 3 0 4 5 6 0))
+((1) (2) (3) nil (4) (5) (6) nil)
+
+user=> (apply concat '((1) (2) (3) nil (4) (5) (6) nil))
+(1 2 3 4 5 6)
+
+-------------------------------------
+
+;; [ step.2 lsts : some flat lists ]
+
+(defn foo2 [fnc & lsts]
+　(apply fnc lsts))
+
+user=> (foo2 #(map (fn [x] (if (not (zero? x)) (list x))) %) '(1 2 3 0 4 5 6 0))
+((1) (2) (3) nil (4) (5) (6) nil)
+
+user=> (foo2 #(map (fn [x y] (list x y)) %1 %2) '(1 2 3 0) '(7 8 9 0))
+((1 7) (2 8) (3 9) (0 0))
+
+-------------------------------------
+
+;; [ step.3 add "apply concat" to append lists ]
+
+(defn mappend [fnc & lsts]
+　(apply concat (apply map fnc lsts)))
+
+user=> (mappend (fn [x] (if (not (zero? x)) (list (* x x)))) '(1 2 3 0 4 5 6 0))
+(1 4 9 16 25 36)
+
+user=> (mappend (fn [x y z] (list (+ x y z))) '(1 2 3) '(4 5 6) '(7 8 9))
+(12 15 18)
+
+=====================================
+
+(defn mapcars [fnc & lsts]
+　(loop [lst lsts rslt ()]
+　　(if (empty? lst)
+　　　(reverse rslt)
+　　　(recur
+　　　　(rest lst)
+　　　　(cons (map fnc (first lst)) rslt)))))
+
+(defn rmapcar [fnc & args]
+　(if (every? coll? args)
+　　(apply map (fn [& prtargs] (apply rmapcar fnc prtargs)) args)
+　　(apply fnc args)))
+
+----------------------------------
+
+user=> (mapcars #(* % %) '(1 2 3) '(4 5 6))
+((1 4 9) (16 25 36))
+
+user=> (rmapcar #(* % %) '(1 (2 (3) 4)))
+(1 (4 (9) 16))
+
+user=> (rmapcar + '(1 (2 (3) 4)) '(11 (12 (13) 14)))
+(12 (14 (16) 18))
+
+
+=====================================
+4.6 入出力 (P57-58)
+=====================================
+
+(defn readlist []
+　(let [line (read-line)]
+　　(read-string (str "(" line  ")"))))
+
+(defn prompt [prompt]
+　(print (format "%s >> " prompt))
+　(flush)
+　(read-line))
+
+----------------------------------
+
+user=> (readlist)
++ 1 2
+(+ 1 2)
+
+user=> (class (readlist))
++ 1 2
+clojure.lang.PersistentList
+
+user=> (eval (readlist))
++ 1 2
+3
+
+----------------------------------
+
+user=> (prompt "type someting.")
+type someting. >> aiueo
+"aiueo"
+
+user=> (prompt "type someting.")
+type someting. >> (+ 1 2)
+"(+ 1 2)"
+
+user=> (read-string "(+ 1 2)")
+(+ 1 2)
+
+user=> (eval (read-string "(+ 1 2)"))
+3
+
+----------------------------------
+
+(defn break-loop
+　([] (break-loop eval #(= % ":q") "input"))
+　([fnc quit & args]
+　　(println "Welcome to break-loop.")
+
+　　(loop [in (prompt (first args))]
+　　　(if (quit in)
+　　　　(println "Bye!")
+　　　　(do
+　　　　　(println (fnc (read-string in)))
+　　　　　(recur (prompt (first args))))))))
+
+
+user=> (break-loop)
+Welcome to break-loop.
+input >> (+ 1 2)
+3
+input >> :q
+Bye!
+nil
+
+user=> (break-loop class #(= % ":exit") "type something.")
+Welcome to break-loop.
+type something. >> (+ 1 2)
+clojure.lang.PersistentList
+type something. >> "aiueo"
+java.lang.String
+type something. >> 1
+java.lang.Long
+type something. >> :exit
+Bye!
+nil
+
+
+=====================================
+4.7 シンボルと文字列 (P58-60)
+=====================================
+
+(defn mkstr [& args]
+　(apply str (for [w args] (with-out-str (print w)))))
+
+(defn _symb [& args]
+　(intern (ns-name *ns*) (symbol (apply mkstr args))))
+
+user=> (mkstr Math/PI " pieces of " 'PI)
+"3.141592653589793 pieces of PI"
+
+user=> (_symb 'ai "ueo")
+#'user/aiueo
+
+user=> aiueo
+#object[clojure.lang.Var$Unbound 0x674a98c8 "Unbound: #'user/aiueo"]
+
+----------------------------------
+
+(defn symb
+　([sym-name] (symb sym-name *ns*))
+　([sym-name ns]
+　　(intern ns (symbol sym-name)))
+　([sym-name ns val]
+　　(intern ns (symbol sym-name) val)))
+
+user=> (symb (mkstr 'ai "ueo2") *ns* "kakikukeko")
+#'user/aiueo2
+
+user=> aiueo2
+"kakikukeko"
+
+----------------------------------
+
+(defn reread [& args]
+　(read-string (apply mkstr args)))
+
+user=> (reread 'aiu 'eo)
+aiueo
+
+user=> (class (reread 'aiu 'eo))
+clojure.lang.Symbol
+
+user=> (reread 1 0)
+10
+
+user=> (class (reread 1 0))
+java.lang.Long
+
+----------------------------------
+
+(defn _explode [sym]
+　(map
+　　#(symbol (str %))
+　　(interleave (str sym))))
+
+(defn explode
+　([sym]
+　　(map #(symbol (str %)) (interleave (str sym))))
+　([sym ns]
+　　(map #(intern ns %) (explode sym)))
+　([sym ns & val]
+　　(map #(intern ns %1 %2) (explode sym) val)))
+
+
+user=> (explode 'aiueo)
+(a i u e o)
+
+user=> (class (first (explode 'aiueo)))
+clojure.lang.Symbol
+
+----------------------------------
+
+user=> (explode 'aiueo *ns*)
+(#'user/a #'user/i #'user/u #'user/e #'user/o)
+
+user=> (class (first (explode 'aiueo *ns*)))
+clojure.lang.Var
+
+----------------------------------
+
+user=> (explode 'aiueo 'gima 5 4 3 2 1 0)
+(#'gima/a #'gima/i #'gima/u #'gima/e #'gima/o)
+
+user=> #'gima/a
+#'gima/a
+
+user=> (meta #'gima/a)
+{:ns #object[clojure.lang.Namespace 0x7eef663c "gima"], :name a}
+
+user=> (deref #'gima/a)
+5
+
+user=> @#'gima/a
+5
+
+user=> (alter-var-root #'gima/a inc)
+6
+
+user=> (deref #'gima/a)
+6
+
+=====================================
+
+;; [ おまけ ]
+
+;; 生成したものの、symbol の使い方ってなにかあるのかな、と考えていた。
+;; こういう使い方ができるのか。
+
+user=> ((first (explode 'aiueo)) {'a "10" 'i "20"})
+"10"
+
+user=> ((first (explode 'aiueo *ns*)) {'a "10" 'i "20"})
+Execution error (ClassCastException) at user/eval2256 (REPL:1).
+java.lang.Long cannot be cast to clojure.lang.IFn
+
+
+;; [ おまけ２ ]
+
+user=> (class :a)
+clojure.lang.Keyword
+
+user=> (class (first (keys {:a "10" :i "20"})))
+clojure.lang.Keyword
+
+user=> (= (first (keys {:a "10" :i "20"})) :a)
+true
+
+----------------------------------
+
+user=> (class 'a)
+clojure.lang.Symbol
+
+user=> (class (first (keys {'a "10" 'i "20"})))
+clojure.lang.Symbol
+
+user=> (= (first (keys {'a "10" 'i "20"})) 'a)
+true
+
+
+=====================================

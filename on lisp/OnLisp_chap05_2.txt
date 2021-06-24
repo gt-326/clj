@@ -1,0 +1,235 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+=====================================
+5.6 部分ツリーでの再帰 (P72-76)
+=====================================
+
+(defn my-copy-tree [tree]
+　(if (seq? tree)
+　　(cons
+　　　(my-copy-tree (first tree))
+　　　(if (not (empty? (rest tree)))
+　　　　(my-copy-tree (rest tree))))
+
+　　tree))
+
+(defn cnt-leaves [tree]
+　(if (not (seq? tree))
+　　1
+　　(+ (cnt-leaves (first tree))
+　　　　(if (empty? (rest tree))
+　　　　　1
+　　　　　(cnt-leaves (rest tree))))))
+
+;; count elements you can see in a list,
+;; and '() that the last element of a list.
+
+user=> (cnt-leaves '(a))
+2
+user=> (cnt-leaves '((a b (c d)) (e) f))
+10
+
+-------------------------------------
+
+(defn rfind-if [fnc tree]
+　(if (seq? tree)
+　　(or
+　　　(rfind-if fnc (first tree))
+　　　(if (not (empty? (rest tree)))
+　　　　(rfind-if fnc (rest tree))))
+　　(and
+　　　(fnc tree)
+　　　[tree (fnc tree)])))
+
+user=> (rfind-if odd? '(2 (4 (5 7))))
+[5 true]
+
+-------------------------------------
+
+(defn rfind-all [fnc tree]
+　((fn fnd [tr acc]
+　　(if (seq? tr)
+　　　(if (empty? tr)
+　　　　acc
+　　　　(fnd (first tr) (fnd (rest tr) acc)))
+
+　　　(if-let [rslt (fnc tr)]
+　　　　(cons [tr rslt] acc) acc))) tree ()))
+
+user=> (rfind-all odd? '(1 2 (3 4 (5 7))))
+([1 true] [3 true] [5 true] [7 true])
+
+=====================================
+
+;; [ chap04 より ]
+
+(defn my-flatten [lst]
+　(letfn [(fltn [x acc]
+　　(if (seq? x)
+　　　(if (empty? x)
+　　　　acc
+　　　　(lazy-seq
+　　　　　(fltn (first x) (fltn (rest x) acc))))
+　　　(cons x acc)))]
+
+　　(if (seq? lst) (fltn lst ()) ())))
+
+(defn findn [fnc lst]
+　(for [v lst :let [rslt (fnc v)] :when rslt]
+　　(vec (list v rslt))))
+
+-------------------------------------
+
+(defn rfind-all [fnc tree]
+　(findn fnc (my-flatten tree)))
+
+user=> (rfind-all odd? '(1 2 (3 4 (5))))
+([1 true] [3 true] [5 true])
+
+=====================================
+
+(defn ttrav
+　([rec] (ttrav rec identity))
+　([rec base]
+　　(fn self [tree]
+　　　(if (seq? tree)
+　　　　(rec (self (first tree))
+　　　　　(if (not (empty? (rest tree)))
+　　　　　　(self (rest tree))))
+
+　　　　(if (fn? base) (base tree) base)))))
+
+-------------------------------------
+
+;; 関数 ttrav をもちいて、既出の関数(P73 - 74)を再定義してみると。
+
+(defn my-copy-tree [tree]
+　(if (seq? tree)
+　　(cons
+　　　(my-copy-tree (first tree))
+　　　(if (not (empty? (rest tree)))
+　　　　(my-copy-tree (rest tree))))
+
+　　tree))
+
+(def my-copy-tree2 (ttrav cons))
+
+user=> (my-copy-tree2 '(1 2 3 (4)))
+(1 2 3 (4))
+
+-------------------------------------
+
+(defn cnt-leaves [tree]
+　(if (not (seq? tree))
+　　1
+　　(+ (cnt-leaves (first tree))
+　　　　(if (empty? (rest tree))
+　　　　　1
+　　　　　(cnt-leaves (rest tree))))))
+
+(def cnt-leaves2
+　(ttrav (fn [l r] (+ l (or r 1))) 1))
+
+;; count elements you can see in a list,
+;; and '() that the last element of a list.
+
+user=> (cnt-leaves '(a))
+2
+user=> (cnt-leaves '((a b (c d)) (e) f))
+10
+
+user=> (cnt-leaves2 '(a))
+2
+user=> (cnt-leaves2 '((a b (c d)) (e) f))
+10
+
+-------------------------------------
+
+;; [ chap04 (P50)より ]
+
+(defn my-flatten [lst]
+　(letfn [(fltn [x acc]
+　　(if (seq? x)
+　　　(if (empty? x)
+　　　　acc
+　　　　(lazy-seq
+　　　　　(fltn (first x) (fltn (rest x) acc))))
+　　　(cons x acc)))]
+
+　　(if (seq? lst) (fltn lst ()) ())))
+
+(defn my-flatten2 [tree]
+　(if (seq? tree)
+　　(concat (my-flatten2 (first tree))
+　　　(if (not (empty? (rest tree)))
+　　　　(my-flatten2 (rest tree))))
+　　(list tree)))
+
+(def my-flatten3
+　(ttrav concat mklist))
+
+;; [ chap04 (P46)より ]
+
+(defn mklist [obj]
+　(if (seq? obj) obj (list obj)))
+
+=====================================
+
+;; 同じく、ttrav よりも一般的な、関数 trec をもちいて既出の関数を再定義すると。
+
+(defn trec
+　([rec] (trec rec identity))
+　([rec base]
+　　(fn self [tree]
+　　　(if (seq? tree)
+　　　　(rec tree #(self (first tree))
+　　　　　(if (not (empty? (rest tree)))
+　　　　　　#(self (rest tree))))
+
+　　　　(if (fn? base) (base tree) base)))))
+
+-------------------------------------
+
+(def my-flatten4
+　(trec
+　　(fn [o l r] (concat (l) (if r (r))))
+　　mklist))
+
+user=> (my-flatten4 '(1 2 (3)))
+(1 2 3)
+
+-------------------------------------
+
+(defn rfind-if [fnc tree]
+　(if (seq? tree)
+　　(or
+　　　(rfind-if fnc (first tree))
+　　　(if (not (empty? (rest tree)))
+　　　　(rfind-if fnc (rest tree))))
+　　(and
+　　　(fnc tree)
+　　　[tree (fnc tree)])))
+
+(def rfind-if2
+　(trec
+　　(fn [o l r] (or (l) (if r (r))))
+　　(fn [tree] (and (odd? tree) [tree (odd? tree)]))))
+
+
+user=> (rfind-if odd? '(2 (4 (5 7))))
+[5 true]
+
+user=> (rfind-if2 '(2 (4 (5 7))))
+[5 true]
+
+
+=====================================
+5.7 いつ関数を作るべきか (P76-77)
+=====================================
+
+・関数を生成する関数を呼ぶのは、実行時に不必要な負荷がかかる可能性がある。
+　-> 関数を生成する関数は、実行時に評価されるので、注意が必要。
+
+
+=====================================

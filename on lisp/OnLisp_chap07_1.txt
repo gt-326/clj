@@ -1,0 +1,225 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+
+(defmacro me [expr]
+　`(pprint (macroexpand '~expr)))
+
+(defmacro me1 [expr]
+　`(pprint (macroexpand-1 '~expr)))
+
+(defmacro bench [expr & flg]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　　result#
+　　　{ :result (if ~@flg result# ~''----)
+　　　　:elapsed (- (System/nanoTime) start#) }))
+
+=====================================
+7.1 マクロはどのように動作するか (P85-87)
+=====================================
+
+　（Lisp における）マクロとは？
+
+　・コードの変換によってオペレータを実装するもの
+　・プログラムを書くプログラム（「関数は結果を生み、マクロは式を生む」）
+
+----------------------------------
+
+;; [ バッククォート未使用版 ]
+
+(defmacro def! [name & val]
+　(list 'def (symbol name) (first val)))
+
+
+user=> (def! "val_0")
+#'user/val_0
+user=> val_0
+nil
+
+user=> (def! "val_1" 1)
+#'user/val_1
+user=> val_1
+1
+
+
+=====================================
+7.2 バッククォート (P87-91)
+=====================================
+
+;; [ バッククォート使用版 ]
+;; def の第一引数が symbol ではくてはならないため、
+　繰り返しのなかで eval を渡してやらないといけないみたい（他のやり方はあるのかな？）。
+
+
+(defmacro def! [name & val]
+　`(def ~(symbol name) '~(first val)))
+
+user=> (for [i (range 10)] `(def! ~(str "val_" i) ~i))
+((user/def! "val_0" 0) (user/def! "val_1" 1) (user/def! "val_2" 2) (user/def! "val_3" 3) (user/def! "val_4" 4) (user/def! "val_5" 5) (user/def! "val_6" 6) (user/def! "val_7" 7) (user/def! "val_8" 8) (user/def! "val_9" 9))
+
+user=> (map eval (for [i (range 10)] `(def! ~(str "val_" i) ~i)))
+(#'user/val_0 #'user/val_1 #'user/val_2 #'user/val_3 #'user/val_4 #'user/val_5 #'user/val_6 #'user/val_7 #'user/val_8 #'user/val_9)
+
+
+----------------------------------
+
+;; [ original ]
+
+(defmacro nif_ [expr pos zero neg]
+　`(case (if (zero? ~expr) ~expr (quot ~expr (Math/abs ~expr)))
+　　1 ~pos
+　　0 ~zero
+　　-1 ~neg))
+
+user=> (map #(nif_ % 'p 'z 'n) '(10 0 -10))
+(p z n)
+
+
+;; クォートをマクロのなかに置いとけば、上記のように使用時にいちいち付加する必要ないのにな、と。
+
+(defmacro nif [expr pos zero neg]
+　`(case (if (zero? ~expr) ~expr (quot ~expr (Math/abs ~expr)))
+　　1 '~pos
+　　0 '~zero
+　　-1 '~neg))
+
+user=> (map #(nif % p z n) '(10 0 -10))
+(p z n)
+
+----------------------------------
+
+(defmacro our-when [test & body]
+　`(if ~test
+　　(do
+　　　~@body)))
+
+user=> (our-when false (println "hello, our-when!"))
+nil
+
+user=> (our-when true (println "hello, our-when!"))
+hello, our-when!
+nil
+
+user=> (our-when true (println "hello, our-when!") "bye!")
+hello, our-when!
+"bye!"
+
+----------------------------------
+
+;; [ スプライシング・アンクォート（~@）は必須だというわけではないよ、の巻 ]
+
+(def a 1)
+(def b '(2))
+(def c 3)
+
+;; スプライシング・アンクォート付きだとこうなりますよ、と。
+;; …ただ、clojure だとバッククォート（構文クォート）を使うと namespace が付いてくる。
+
+user=> `(a ~b c)
+(user/a (2) user/c)
+
+user=> `(a ~@b c)
+(user/a 2 user/c)
+
+user=> `(~a ~@b c)
+(1 2 user/c)
+
+
+;; …なので、不要であれば namespace を削るために、~'シンボルという形式にしないといけない。
+
+user=> `(~'a ~@b ~'c)
+(a 2 c)
+
+;; …でやっと本題に。
+;; こうすれば、スプライシング・アンクォート（~@）を使わないで同じことができるよ、と。
+
+user=> (cons 'a (concat b (list 'c)))
+(a 2 c)
+
+
+=====================================
+7.3 単純なマクロの定義 (P91-94)
+=====================================
+
+(defn my-member
+　([x lst] (my-member x lst =))
+　([x lst fnc]
+　　(if (empty? lst)
+　　　nil
+　　　(if (fnc x (first lst))
+　　　　lst
+　　　　(recur x (rest lst) fnc)))))
+
+
+user=> (my-member 10 (range 10))
+nil
+
+user=> (my-member 6 (range 10))
+(6 7 8 9)
+
+;; 凝ったオペレータを指定したければ、追加で渡せる。
+
+user=> (my-member 5 (range 10) #(= (inc %1) %2))
+(6 7 8 9)
+
+user=> (my-member 10 (range 10) #(not (= %1 %2)))
+(0 1 2 3 4 5 6 7 8 9)
+
+----------------------------------
+
+;; オペレータ：#(not (= %1 %2)) を使う処理が頻繁にあるのなら、いちいち実行時に指定するのは面倒。
+;; …ってときには、マクロを作ってみよう。
+
+(defmacro memq [x lst]
+　`(my-member ~x ~lst #(not (= %1 %2))))
+
+user=> (memq 10 (range 10))
+(0 1 2 3 4 5 6 7 8 9)
+
+
+=====================================
+7.4 マクロ展開の確認 (P94-95)
+=====================================
+
+user=> (source while)
+(defmacro while
+  "Repeatedly executes body while test expression is true. Presumes
+  some side-effect will cause test to become false/nil. Returns nil"
+  {:added "1.0"}
+  [test & body]
+  `(loop []
+     (when ~test
+       ~@body
+       (recur))))
+nil
+
+user=> (pprint (macroexpand '(while (able) (laugh))))
+(loop* [] (clojure.core/when (able) (laugh) (recur)))
+nil
+
+user=> (pprint (macroexpand-1 '(while (able) (laugh))))
+(clojure.core/loop [] (clojure.core/when (able) (laugh) (recur)))
+nil
+
+----------------------------------
+
+user=> (me1 (memq 10 (range 10)))
+(user/my-member
+ 10
+ (range 10)
+ (fn*
+  [p1__3216__3218__auto__ p2__3217__3219__auto__]
+  (clojure.core/not
+   (clojure.core/= p1__3216__3218__auto__ p2__3217__3219__auto__))))
+nil
+
+----------------------------------
+
+user=> (def exp (macroexpand-1 '(memq 10 (range 10))))
+#'user/exp
+
+user=> (eval exp)
+(0 1 2 3 4 5 6 7 8 9)
+
+
+=====================================

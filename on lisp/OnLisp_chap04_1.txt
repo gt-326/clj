@@ -1,0 +1,470 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+==================================
+4.1 ユーティリティの誕生 (P41-44)
+==================================
+
+;; 引数として「関数」を渡せること。
+;; 関数を引数にとる関数は抽象度（本のなかでは「一般」性）が高くなる。
+;; 「ボトムアップ」スタイルでのプログラミングの主要な要素であり、その意味を考えさせる。
+
+;; ある問題を解決するときには、「一般部分」と「個別部分」とに切り分けること。
+;; そして、よくある「一般部分」にたいする処理が「ユーティリティ」としてまとめられていれば、
+;; その問題の「個別部分」のみに集中できる。
+
+;; [ original ]
+
+(defn find2 [fnc lst]
+　(if (not (empty? lst))
+　　(if-let [val (fnc (first lst))]
+　　　[(first lst) val]
+　　　(recur fnc (rest lst)))))
+
+
+user=> (find2 #(odd? %) '())
+nil
+user=> (find2 #(odd? %) '(2 4 6))
+nil
+user=> (find2 #(odd? %) '(2 3 4 5))
+[3 true]
+
+----------------------------------
+
+;; [ it returns matched elements all. ]
+
+(defn findn [fnc lst]
+　(for [v lst :let [rslt (fnc v)] :when rslt]
+　　(vec (list v rslt))))
+
+(defn fizzbuzz [n]
+　(condp #(zero? (rem %2 %1)) n
+　　15 'fizzbuzz
+　　3 'fizz
+　　5 'buzz
+　　nil))
+
+user=> (findn #(odd? %) '())
+()
+
+user=> (findn #(odd? %) '(2 4 6))
+()
+
+user=> (findn #(fizzbuzz %) (range 1 20))
+([3 fizz] [5 buzz] [6 fizz] [9 fizz] [10 buzz] [12 fizz] [15 fizzbuzz] [18 fizz])
+
+
+==================================
+4.2 抽象化への投資 (P44-46)
+==================================
+
+;; [ 要点 ]
+
+;; その関数なしでは、処理が非効率的になっちゃう。
+;; そんな関数を書いて「ユーティリティ集」にまとめよう。
+;; 思いのほかユーティリティ関数を使う頻度は多いものだ（だから、書くための「コスト」は回収しやすい、と）。
+
+;; 〜「ユーティリティ集」があることの効用〜
+;; ・問題を簡単にしてくれる
+;; ・良いコードが書ける
+;; ・新しいことを始めやすくなる
+
+=====================================
+
+;; 「count」を用いている方がその意図が分かりやすいなぁ。
+;; 「(range 1000000)」くらいのリストでも、Clojure は効率的にやってくれるので、
+;; わざわざ、下のほうを使う必要なさそう。
+
+(defn single? [lst] (= 1 (count lst)))
+(defn _single? [lst] (and (coll? lst) (not (empty? lst)) (empty? (rest lst))))
+
+(defn last1 [lst] (last lst))
+
+(defn append1 [lst obj]
+　(letfn [(fnc [lst acc]
+　　(if (empty? lst)
+　　　acc
+　　　(recur (rest lst) (cons (first lst) acc))))]
+
+　　(if (list? lst)
+　　　(reverse (cons obj (fnc lst ()))) ;; clojure.lang.PersistentList
+　　　(fnc (reverse lst) (cons obj ())) ;; clojure.lang.Cons
+)))
+
+;; ※[ conc1 未作成]
+
+(defn conc1 [lst obj]
+　(concat lst (list obj)))
+
+(defn mklist [obj]
+　(if (seq? obj) obj (list obj)))
+
+=====================================
+
+;; [ make a nested recursion ]
+
+(defmacro mkNestedRecur [fnc-name input & fnc]
+　`(loop [obj# ((if (nil? '~fnc) identity ~@fnc)
+　　　　　　　(if (and (= 1 (count ~input)) (seq? (first ~input)))
+　　　　　　　　(first ~input)
+　　　　　　　　~input))
+　　　　　　rslt# ()]
+　　(if (empty? obj#)
+　　　rslt#
+　　　(recur
+　　　　(rest obj#)
+　　　　(cons
+　　　　　(if (seq? (first obj#))
+　　　　　　(lazy-seq (apply ~fnc-name (first obj#)))
+　　　　　　(first obj#))
+　　　　　rslt#)))))
+
+;; [ convert to clojure.lang.PersistentList ]
+
+(defn toList [& params]
+　(if (= '(()) params)
+　　(list ())
+　　(reverse
+　　　(mkNestedRecur toList params))))
+
+;; [ convert to clojure.lang.Cons ]
+
+(defn toCons [& params]
+　(if (not (empty? params))
+　　(if (= '(()) params)
+　　　(cons () ())
+　　　(mkNestedRecur toCons params reverse))))
+
+
+=====================================
+4.3 リストに対する操作 (P46-50)
+=====================================
+
+(defmacro bench [expr & flg]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　(if ~@flg
+　　　{:result result# :elapsed (- (System/nanoTime) start#)}
+　　　{:result ~''---- :elapsed (- (System/nanoTime) start#)})))
+
+----------------------------------
+
+(defn longer [x y]
+　(> (count x) (count y)))
+
+(defn _longer [x y]
+　(letfn [(fnc [a b]
+　　(and (not (empty? a))
+　　　　　(or (empty? b)
+　　　　　　　(recur (rest a) (rest b)))))]
+
+　　(if (and (seq? x) (seq? y))
+　　　(fnc x y)
+　　　(> (count x) (count y)))))
+
+----------------------------------
+
+;; がんばって「longer」を実装してはみたものの、複雑だし、全然遅いという。
+;; ちと残念な結果に…。
+
+user=> (bench (longer (range 1000002) (range 1000002)))
+{:result ----, :elapsed 74625}
+
+user=> (bench (_longer (range 1000002) (range 1000002)))
+{:result ----, :elapsed 173150151}
+
+=====================================
+
+(defn fltr [pred nested-lst]
+　(loop [[head & tail] nested-lst acc ()]
+　　(if (= nil head tail)
+　　　(reverse acc)
+　　　(recur
+　　　　tail
+　　　　(if (and (seq? head) (not (empty? head)))
+　　　　　(let [val (lazy-seq (fltr pred head))]
+　　　　　　(if (empty? val) acc (cons val acc)))
+　　　　　(if (pred head)
+　　　　　　(cons head acc)
+　　　　　　acc))))))
+
+(defn group [src n]
+　(letfn [(fnc [src acc]
+　　(let [sublst (drop n src)]
+　　　(if (empty? sublst)
+　　　　(reverse (cons src acc))
+　　　　(recur sublst (cons (first (split-at n src)) acc)))))]
+
+　　(if (> n 0)
+　　　(if (empty? src) nil (fnc src ())))))
+
+(defn my-flatten [lst] (flatten lst))
+
+(defn my-flatten [lst]
+　(letfn [(fltn [x acc]
+　　(if (seq? x)
+　　　(if (empty? x)
+　　　　acc
+　　　　(lazy-seq
+　　　　　(fltn (first x) (fltn (rest x) acc))))
+　　　(cons x acc)))]
+
+　　(if (seq? lst) (fltn lst ()) ())))
+
+
+=====================================
+
+;; [ original : I think it has a bug. ]
+
+(defn _prune [pred tree]
+　(loop [[head & tail] tree acc ()]
+　　(if (= nil head tail)
+　　　(reverse acc)
+　　　(recur
+　　　　tail
+　　　　(if (seq? head)
+　　　　　(cons (_prune pred head) acc)
+　　　　　(if (pred head)
+　　　　　　acc
+　　　　　　(cons head acc)))))))
+
+
+;; 「_prune」can't understand the difference of empty list
+;; as value (in parent list) and as end of list.
+
+user=> (_prune #(= () %) '(1 2 (3 (() 4 nil 5 () (6))) ()))
+(1 2 (3 (() 4 nil 5 () (6))) ())
+
+-------------------------------------
+
+;; [ add empty check [*]. ]
+
+(defn prune [pred tree]
+　(loop [[head & tail] tree acc ()]
+　　(if (= nil head tail)
+　　　(reverse acc)
+　　　(recur
+　　　　tail
+　　　　(if (and (seq? head) (not (empty? head))) ;; <- [*]
+　　　　　(cons (lazy-seq (prune pred head)) acc)
+　　　　　(if (pred head)
+　　　　　　acc
+　　　　　　(cons head acc)))))))
+
+
+;; [ or calling "fltr" with pred opposed. ]
+
+(defn prune [pred nested-lst]
+　(fltr #(not (pred %)) nested-lst))
+
+
+;; [ The bug is fixed. ]
+
+user=> (prune #(= () %) '(1 2 (3 (() 4 nil 5 () (6))) ()))
+(1 2 (3 (4 nil 5 (6))))
+
+user=> (prune nil? '(1 2 (3 (() 4 nil 5 () (6))) ()))
+(1 2 (3 (() 4 5 () (6))) ())
+
+
+;; [ But 「prune」 still can't avoid some error pred returns. ]
+
+user=> (even? ())
+Execution error (IllegalArgumentException) at user/eval2753 (REPL:1).
+Argument must be an integer: ()
+
+user=> (prune even? '(1 2 (3 (() 4 nil 5 () (6))) ()))
+Execution error (IllegalArgumentException) at user/prune (REPL:9).
+Argument must be an integer: ()
+
+
+;; [ need to add more condition to check target type. ]
+
+user=> (prune #(and (number? %) (even? %)) '(1 2 (3 (() 4 nil 5 () (6))) ()))
+(1 (3 (() nil 5 ())) ())
+
+
+=====================================
+4.4 検索 (P50-54)
+=====================================
+
+;; [ original : I think it has a bug. ]
+
+(defn _before
+　([x y lst] (_before x y lst =))
+　([x y lst test-fnc]
+　　(if (and lst (seq? lst))
+　　　(loop [l lst]
+　　　　(if (not (empty? lst))
+　　　　　(condp #(test-fnc %2 %1) (first l)
+　　　　　　y nil
+　　　　　　x l
+　　　　　　(recur (rest l))))))))
+
+----------------------------------
+
+user=> (_before 1 5 (range 10))
+(1 2 3 4 5 6 7 8 9)
+
+user=> (_before 1 5 (cons 5 (range 10)))
+nil
+
+=====================================
+
+;; [ sub function ]
+
+(defn member
+　([obj lst] (member obj lst =))
+　([obj lst pred]
+　　(loop [l lst]
+　　　(if (not (empty? l))
+　　　　(if (pred obj (first l))
+　　　　　l
+　　　　　(recur (rest l)))))))
+
+user=> (member 'b '(a b c d))
+(b c d)
+
+user=> (member 3 (range 10) #(= %2 (* %1 2)))
+(6 7 8 9)
+
+----------------------------------
+
+(defn before
+　([x y lst] (before x y lst =))
+　([x y lst pred]
+　　(loop [l lst]
+　　　(if (not (empty? l))
+　　　　(condp #(pred %2 %1) (first l)
+　　　　　x (if (member y (rest l) pred) l)
+　　　　　y (if-let [val (member x (rest l) pred)]
+　　　　　　　(before x y val pred))
+　　　　　(recur (rest l)))))))
+
+(defn after
+　([x y lst] (after x y lst =))
+　([x y lst pred]
+　　(loop [[head & tail] lst]
+　　　(if (and head tail)
+　　　　(condp #(pred %2 %1) head
+　　　　　x (if-let [val (member y tail pred)]
+　　　　　　　(member x (rest val) pred))
+　　　　　y (if-let [val (member x tail pred)] val)
+　　　　　(recur tail))))))
+
+=====================================
+
+(defn duplicate
+　([obj lst] (duplicate obj lst =))
+　([obj lst fnc]
+　　(member
+　　　obj
+　　　(rest (member obj lst fnc))
+　　　fnc)))
+
+(defn split-if [fnc lst]
+　(loop [l lst acc ()]
+　　(if (or (empty? l) (fnc (first l)))
+　　　[(reverse acc) l]
+　　　(recur
+　　　　(rest l)
+　　　　(cons (first l) acc)))))
+
+----------------------------------
+
+user=> (split-if #(= 3 %) (range 10))
+[(0 1 2) (3 4 5 6 7 8 9)]
+
+
+;; 条件によっては、
+;; 標準関数のほうが、直観に反する挙動をするんだなぁ、と。
+
+user=> (split-with #(= 3 %) (range 10))
+[() (0 1 2 3 4 5 6 7 8 9)]
+
+user=> (split-with (complement #(= 3 %)) (range 10))
+[(0 1 2) (3 4 5 6 7 8 9)]
+
+=====================================
+
+(defn most [fnc lst]
+　(if (empty? lst)
+　　[nil nil]
+　　(loop [ [head & tail] lst
+　　　　　　　[obj rslt] [head (fnc head)] ]
+　　　(if (= nil head tail)
+　　　　[obj rslt]
+　　　　(recur tail
+　　　　　(if (> (fnc head) rslt)
+　　　　　　[head (fnc head)]
+　　　　　　[obj rslt]))))))
+　　　　
+(defn best [fnc lst]
+　(loop [ [head & tail] lst rslt head ]
+　　(if (= nil head tail)
+　　　rslt
+　　　(recur tail
+　　　　(if (fnc head rslt) head rslt)))))
+
+(defn mostn [fnc lst]
+　(if (empty? lst)
+　　[nil nil]
+　　(loop [ [head & tail] lst
+　　　　　　　[objs rslt] [head (fnc head)] ]
+　　　(if (= nil head tail)
+　　　　[(reverse objs) rslt]
+　　　　(let [ obj (first tail)
+　　　　　　　　rslt_new (fnc obj) ]
+　　　　　(recur
+　　　　　　(rest tail)
+　　　　　　(if (> rslt_new rslt)
+　　　　　　　[obj rslt_new]
+　　　　　　　(if (= rslt_new rslt)
+　　　　　　　　[(list obj objs) rslt]
+　　　　　　　　[objs rslt]))))))))
+
+----------------------------------
+
+;; [ おまけ ]
+
+;; I visited this sitem, and found better one.
+;; [ http://blog.fogus.me/2008/10/08/on-lisp-clojure-chapter-4/ ]
+
+;; [ Rich Hickey's ]
+
+(defn best [f xs]
+　(reduce
+　　#(if (f %1 %2) %1 %2)
+　　xs))
+
+
+;; [ Michael Fogus's. I think it has a bug. ]
+
+(defn _most [f xs]
+　(reduce
+　　#(if (> (f %1) (f %2))
+　　　[%1 (count %1)]
+　　　[%2 (count %2)])
+　　xs))
+
+user=> (_most count '((a b) (a b c) (a) (e f g)))
+[(e f g) 3]
+
+;; 比較結果（要素が２つのベクター。たとえば、[(a b c) 3]とか。）が %1 に代入されることになる。
+;; それがつぎの要素（リスト）と比較され、意図していない挙動となる。
+
+user=> (_most count '((a b) (a b c) (a)))
+[[(a b c) 3] 2]
+
+
+;; [ So, I've got this simple ver., yeah! ]
+
+(defn most [f xs]
+　(let [obj (reduce #(if (> (f %1) (f %2)) %1 %2) xs)]
+　　[obj (f obj)]))
+
+(defn mostn [f xs]
+　(let [[_ rslt] (most f xs)]
+　　[(map first (findn #(= rslt (f %)) xs)) rslt]))
+
+
+=====================================

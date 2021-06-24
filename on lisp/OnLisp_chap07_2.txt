@@ -1,0 +1,464 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+(defmacro me [expr]
+　`(pprint (macroexpand '~expr)))
+
+(defmacro me1 [expr]
+　`(pprint (macroexpand-1 '~expr)))
+
+(defmacro bench [expr & flg]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　　result#
+　　　{ :result (if ~@flg result# ~''----)
+　　　　:elapsed (- (System/nanoTime) start#) }))
+
+=====================================
+7.5  パラメータリストの分配 (P96-97)
+=====================================
+
+user=> (destructure '([u s v] [1 5 9]))
+[vec__2090 [1 5 9] u (clojure.core/nth vec__2090 0 nil) s (clojure.core/nth vec__2090 1 nil) v (clojure.core/nth vec__2090 2 nil)]
+
+----------------------------------
+
+(defmacro foo [fnc & args]
+　`(let ~(destructure args)
+　　~fnc))
+
+user=> (me1 (foo #(list u s v) [u s v] [1 5 9]))
+(clojure.core/let
+ [vec__2145
+  [1 5 9]
+  u
+  (clojure.core/nth vec__2145 0 nil)
+  s
+  (clojure.core/nth vec__2145 1 nil)
+  v
+  (clojure.core/nth vec__2145 2 nil)]
+ (fn* [] (list u s v)))
+nil
+
+user=> (foo #(list u s v) [u s v] [1 5 9])
+#object[user$eval2151$fn__2152 0x3cd958b7 "user$eval2151$fn__2152@3cd958b7"]
+
+user=> ((foo #(map inc (list u s v)) [u s v] [1 5 9]))
+(2 6 10)
+
+----------------------------------
+
+user=> ((fn [x [y] & z] (list x y z)) 1 [2 3] 4 5)
+(1 2 (4 5))
+
+
+;; 余談ですが、clojure の分配束縛のなかで、:as 節の動作は面白いな、と。
+
+user=> (let [[x y :as z] [1 2 3 4 5]]
+　(list x y z))
+  #_=> (1 2 [1 2 3 4 5])
+
+
+;; let 以外にも、:as 節使えないかな、とカタカタ。
+;; 引数の書き方がちょっとトリッキーだけど、関数定義時にもキーワードによる束縛など使えた。
+
+(defn foo [& {:keys [x y z]}]
+　(str x y z))
+
+(defn bar [& {:keys [x y z] :as all}]
+　(do
+　　(println (str x y z))
+　　all))
+
+user=> (foo :x "aiueo " :y "kakikukeko " :z "sashisuseso ")
+"aiueo kakikukeko sashisuseso "
+
+user=> (def baz (bar :w "aiueo " :x "kakikukeko " :y "sashisuseso "))
+kakikukeko sashisuseso
+#'user/baz
+
+user=> baz
+{:y "sashisuseso ", :w "aiueo ", :x "kakikukeko "}
+
+----------------------------------
+
+;; clojure の場合、map にしろ for にしろ、lazy-seq 扱いになる。
+;; 明示的に dorun / doall する必要がある。
+
+(defmacro our-dolist [[var lst & rslt] & body]
+　`(do
+　　(dorun (for [~var '~lst] (do ~@body)))
+　　'~(first rslt)))
+
+;; オリジナルは let しているが、その意図はよくわからない。
+
+(defmacro our-dolist [[var lst & rslt] & body]
+　`(do
+　　(dorun (map (fn [~var] (do ~@body)) '~lst))
+　　(let [~var nil]
+　　　'~(first rslt))))
+
+
+user=> (our-dolist (x (a b c)) (println x))
+a
+b
+c
+nil
+
+;; rslt に値を設定してみる。
+
+user=> (def foo (our-dolist (x (a b c) aiueo) (println x)))
+a
+b
+c
+#'user/foo
+
+user=> foo
+aiueo
+
+
+=====================================
+7.6 マクロのモデル (P97-98)
+=====================================
+
+・マクロが何をするのかを形式的に説明しても、長くややこしいだけ
+・そこで、defmacro の定義方法を想像してみよう
+・このような方法は、eval の説明も同様で、それが Lisp の伝統だ、と。
+
+----------------------------------
+
+;; 「defmacro の概形」（を無理矢理トレースしたけれど…）
+
+;; name のパラメーター :expander より fnc を取得する
+(defmacro our-expander [name]
+　`(:expander (deref ~name)))
+
+;; name の :expander に無名関数を設定する
+(defmacro our-defmacro [name params & body]
+　(let [g (gensym)]
+　　`(do
+　　　(swap! ~name assoc :expander
+　　　　(fn [~g]
+　　　　　(let [~params (rest ~g)]
+　　　　　　~@body)))
+　　　~name)))
+
+;; (first expr) により、上記 name にあたるものを取得する想定のようだ
+;; :expander に値が設定されていれば、expr を引数に、その fnc を実行する。
+;; なければ、expr をそのまま返す
+
+(defn our-macroexpand-1 [expr]
+　(if (and (seq? expr) (our-expander (first expr)))
+　　((our-expander (first expr)) expr)
+　　expr))
+
+----------------------------------
+
+user=> (def foo (atom {:expander nil}))
+#'user/foo
+
+;; :expander には今のところ nil しかないので、引数（expr）をそのまま返している
+
+user=> (our-macroexpand-1 (list foo 1 2 3))
+(#object[clojure.lang.Atom 0x79ce315e {:status :ready, :val {:expander nil}}] 1 2 3)
+
+
+;; :expander に 無名関数の引数リスト（params）と body を渡している。
+;; 引数リストの分配にも、バッチリ対応している。
+
+user=> (our-defmacro foo [a [b] c] (map inc (list a b c)))
+#object[clojure.lang.Atom 0x79ce315e {:status :ready, :val {:expander #object[user$eval2318$fn__2319 0x68071298 "user$eval2318$fn__2319@68071298"]}}]
+
+;; 無名関数を呼び出し、結果を返している
+
+user=> (our-macroexpand-1 (list foo 10 [20 30] 40 50))
+(11 21 41)
+
+;; 引数にクォートを用いる形式では、以下のようにエラーになる。
+
+user=> (our-macroexpand-1 '(foo 10 [20 30] 40 50))
+Execution error (ClassCastException) at user/our-macroexpand-1 (REPL:2).
+clojure.lang.Symbol cannot be cast to java.util.concurrent.Future
+
+----------------------------------
+
+user=> (let [op 'def]
+　(defmacro our-setq [var val]
+　　(list op var val)))
+  #_=>   #_=> #'user/our-setq
+
+user=> (our-setq foo "aiueo")
+#'user/foo
+
+user=> foo
+"aiueo"
+
+
+=====================================
+7.7 プログラムとしてのマクロ (P99-101)
+=====================================
+
+;; common lisp の関数「psetq」にあたるものが clojure にあるのか分からないけれど、
+;; …ようするに、私家版「do」を作るのがメインなのでこんな感じかな、と。
+
+;; 補助関数
+
+(defn make-param-forms [bindforms]
+　(map
+　　(fn [b]
+　　　(if (seq? b)
+　　　　(first b)
+　　　　b))
+　　bindforms))
+
+(defn make-step-forms [bindforms]
+　(map
+　　(fn [b]
+　　　(if (seq? b) (last b) b))
+　　bindforms))
+
+(defn make-initval-forms [bindforms]
+　(map
+　　(fn [b]
+　　　(if (seq? b)
+　　　　(first (rest b))))
+　　bindforms))
+
+----------------------------------
+
+user=> (make-param-forms '((a 1) (b 2 (inc b)) (c 3 (dec c)) d))
+(a b c d)
+
+user=> (make-step-forms '((a 1) (b 2 (inc b)) (c 3 (dec c)) d))
+(1 (inc b) (dec c) d)
+
+user=> (make-initval-forms '((a 1) (b 2 (inc b)) (c 3 (dec c)) d))
+(1 2 3 nil)
+
+----------------------------------
+
+;; loop/recur を用いたほうが変数の束縛などをスマートに適用できるけど、
+;; gensym していたり、なるべくオリジナルを踏襲した。
+
+(defmacro our-do [bindforms [test & rslt] & body]
+　`(let [label# (fn ~(vec (make-param-forms bindforms))
+　　(if ~test
+　　　(do ~@rslt)
+　　　(do
+　　　　~@body
+　　　　(recur ~@(make-step-forms bindforms)))))]
+
+　　(label# ~@(make-initval-forms bindforms))))
+
+
+user=> (me
+　(our-do
+　　((a 1) (b 2 (inc b)) (c 3 (dec c)) d)
+　　((>= b 10) (list a b c d))
+　　(println a b c d)))
+  #_=>   #_=>   #_=>   #_=> (letfn*
+ [G__2652
+  (clojure.core/fn
+   G__2652
+   [a b c d]
+   (if
+    (>= b 10)
+    (do (list a b c d))
+    (do (println a b c d) (recur 1 (inc b) (dec c) d))))]
+ (G__2652 1 2 3 nil))
+nil
+
+user=> (our-do
+　　((a 1) (b 2 (inc b)) (c 3 (dec c)) d)
+　　((>= b 10) (list a b c d))
+　　(println a b c d))
+  #_=>   #_=>   #_=> 1 2 3 nil
+1 3 2 nil
+1 4 1 nil
+1 5 0 nil
+1 6 -1 nil
+1 7 -2 nil
+1 8 -3 nil
+1 9 -4 nil
+(1 10 -5 nil)
+
+
+=====================================
+7.8 マクロのスタイル (P101-104)
+=====================================
+
+ボトムアップデザインについての説明（P4）にあったが、
+作業をしているなかで「プログラミング言語」と「プログラム」の境目が何度も書き直される。
+
+同様に、マクロが優先するもの（明確さ、効率）は、そのタイミングごとに（マクロそのものなのか、マクロを書くためのマクロなのか）
+恣意的に区別される。また、その「タイミング」すらも恣意的なものである、と。
+
+…そのため、ここでの説明はモゴモゴしていて歯切れがわるい（しょうがないのだろうけど）。
+以下、箇条書きで。
+
+----------------------------------
+
+・一般的に、コードの記述は明確で、効率的であるべき
+・マクロは、人間に読まれ、lisp により評価され、式に展開されるもの
+・lisp に評価されたマクロ、「展開形」はマクロ作者以外の目に触れることが少ない
+
+・マクロは、マクロ定義にかかわるコードの種類により、ふたつに分けられる
+　「展開コード」　：　マクロが展開形を生成するためのコード部分　【明確さ】
+　「被展開コード」：　展開形そのものに現れるコード部分　　　　　【効率】
+
+・マクロの定義には、２つの時点（コンパイル時、実行時）で別々に評価される式が混ざっている。
+　関数よりも読みにくいのはそのためであり、また、上記それぞれの時点で優先するものものが違っている。
+
+　「コンパイル時」　：
+　　１．「展開コード」を作成するのに要するプログラマーの時間　【明確さ、簡潔さ】　
+　　２．「展開コード」をコンパイルに要する時間　【効率】
+　　　　※　マクロを生成するためのマクロ、「補助マクロ」の場合は効率が優先されるべき
+
+　「実行時」　：
+　　１．コンパイル済みのコードのなかのマクロ（展開形）の実行効率（リソース、時間）　【効率】
+
+・マクロは、どこからでも呼ばれるものであるが、その実体は見えづらい。
+　・マクロを再定義したときの影響（反映漏れ）が見えにくい
+　・関数定義のようには人間の目に触れないため、非効率なコードに展開されるものだったとしても気づかれにくい
+
+----------------------------------
+
+;; 「our-and」は、引数の要素の数だけ再帰し、count している。
+;; 関数で書いてもほぼ同じ。非効率だが、マクロであれば「our-andb」と同程度、と見なされる。
+;; また、「our-andb」と比べてると、その記述の簡潔さは魅力にさえなる。
+
+(defn fn-and [& args]
+　(case (count args)
+　　0 true
+　　1 (first args)
+　　(if (first args)
+　　　(apply fn-and (rest args)))))
+
+(defmacro our-and [& args]
+　(case (count args)
+　　0 true
+　　1 (first args)
+　　`(if ~(first args)
+　　　(our-and ~@(rest args)))))
+
+----------------------------------
+
+(defmacro our-andb [& args]
+　(if (empty? args)
+　　true
+　　`(let [expander# (fn [~'rst]
+　　　　(if (empty? (rest ~'rst))
+　　　　　(first ~'rst)
+　　　　　(if (first ~'rst)
+　　　　　　(recur (rest ~'rst)))))]
+
+　　　(expander# (list ~@args)))))
+
+----------------------------------
+
+user=> (and)
+true
+
+user=> (and a)
+Syntax error compiling at (REPL:1:1).
+Unable to resolve symbol: a in this context
+
+user=> (and 'a 'b 'c)
+c
+
+user=> (if 'a (if 'b 'c))
+c
+
+user=> (if nil (if 'b 'c))
+nil
+
+user=> (our-and 'a 'b 'c)
+c
+
+user=> (our-andb 'a 'b 'c)
+c
+
+
+=====================================
+7.9 マクロへの依存 (P104-105)
+=====================================
+
+・マクロは、一般用途のユーティリティーを実装するのに使われるもの
+・マクロは、マクロを呼び出す関数がコンパイルされたときに、展開形に置換される
+・マクロを変更した場合、そのマクロを利用した関数を再コンパイルしないと変更内容は反映されない
+
+・マクロだからとひとまとめにするよりも、そのマクロと利用する関数とをいっしょにファイルにまとめると可読性があがる
+・マクロ定義は、そのファイルの先頭（利用する関数よりも前）でおこなう
+
+
+=====================================
+7.10 関数からマクロへ (P105-107)
+=====================================
+
+;; 関数をマクロで書き直したくなるときがある。いつマクロを使うべきか？
+;; ごちゃごちゃ書かれている。
+
+;; 第 8 章「いつマクロをつかうべきか」とあるので、ここでは、
+
+『プログラミング Clojure』　第10章「マクロ・クラブ」のルールを引用するにとどめておく
+　・マクロは書くな
+　・それがパターンをカプセル化する唯一の方法ならば、マクロを書け
+
+----------------------------------
+
+(defn fn-foo [x y z]
+　(list x
+　　(let [x y]
+　　　(list x z))))
+
+(defmacro foo-ng [x y z]
+　`(list ~x
+　　　(let [x ~y]
+　　　　(list x ~z))))
+
+;; clojure では、let の束縛は ~'シンボル と「アナフォラ」（前方照応）にしないといけない。
+;; 第 14 章「アナフォリックマクロ」に先駆けて。
+
+(defmacro foo [x y z]
+　`(list ~x
+　　　(let [~'x ~y]
+　　　　(list ~'x ~z))))
+
+----------------------------------
+
+;; オリジナルのマクロ版をそのままトレースすると、
+;; user/x とネームスペースがくっついてきて、マクロの外側を参照しようとエラーになる。
+
+user=> (me (foo-ng 1 2 3))
+(clojure.core/list
+ 1
+ (clojure.core/let [user/x 2] (clojure.core/list user/x 3)))
+nil
+
+user=> (foo-ng 1 2 3)
+Syntax error macroexpanding clojure.core/let at (REPL:1:1).
+user/x - failed: simple-symbol? at: [:bindings :form :local-symbol] spec: :clojure.core.specs.alpha/local-name
+user/x - failed: vector? at: [:bindings :form :seq-destructure] spec: :clojure.core.specs.alpha/seq-binding-form
+user/x - failed: map? at: [:bindings :form :map-destructure] spec: :clojure.core.specs.alpha/map-bindings
+user/x - failed: map? at: [:bindings :form :map-destructure] spec: :clojure.core.specs.alpha/map-special-binding
+
+user=> (me (foo 1 2 3))
+(clojure.core/list 1 (clojure.core/let [x 2] (clojure.core/list x 3)))
+nil
+
+----------------------------------
+
+user=> (fn-foo 1 2 3)
+(1 (2 3))
+
+user=> (foo 1 2 3)
+(1 (2 3))
+
+
+=====================================
+7.11 シンボルマクロ (P107)
+=====================================
+
+パスしまーす！
+
+
+=====================================

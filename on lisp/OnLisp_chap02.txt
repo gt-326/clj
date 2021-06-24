@@ -1,0 +1,345 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+==================================
+2.4 属性としての関数 (P17-18)
+==================================
+
+;; original
+;; 動物ごとに、独自の関数（ふるまい）を持っている。
+
+(defn behave [animal]
+　(cond
+　　(= animal 'dog) (do '(wag-tail) '(bark))
+　　(= animal 'rat) (do '(scurry) '(squeek))
+　　(= animal 'cat) (do '(rub-legs) '(scratch-carpet))))
+
+(def behave
+　{ 'dog (do '(wag-tail) '(bark))
+　　'rat (do '(scurry) '(squeek))
+　　'cat (do '(rub-legs) '(scratch-carpet)) })
+
+==================================
+
+;; で、「後から動物の種類を追加できるよう、上記のコードを柔軟にするには？」と。
+;; それにたいする Clojure っぽい対応はこんな感じだろうか、というものを、以下に（その１〜３）。
+
+
+;;==================================
+;; その１ [ lexical-closure & atom ]
+;;==================================
+
+;; 変更可能なプライベートフィールドも持てる。
+;; ただし、これは関数型のプログラミングスタイルから外れることになるけれど。
+
+;; 定義時の関数（ふるまい）のみ、そのフィールドにアクセス可能。
+;; そのアクセス用関数の引数として、呼び出し時に処理（「fnc」の部分）を渡せるようにすれば、
+;; プライベートフィールドを操作する余地を与えられる。
+
+(defn gen-lexicals [x]
+　(let [val (atom x)]
+　　(atom { 'init-val @val
+　　　　　　　'current-val (fn [] @val)
+　　　　　　　'access (fn [fnc] (fnc val)) })))
+
+(def lex (gen-lexicals 100))
+
+----------------------------------
+
+user=> (@lex 'init-val)
+100
+user=> ((@lex 'current-val))
+100
+
+user=> ((@lex 'access) #(reset! % (inc @%)))
+101
+user=> ((@lex 'access) #(reset! % (inc @%)))
+102
+user=> ((@lex 'current-val))
+102
+
+user=> ((@lex 'access) #(reset! % (dec @%)))
+101
+user=> ((@lex 'access) #(reset! % (dec @%)))
+100
+user=> ((@lex 'current-val))
+100
+
+----------------------------------
+
+;; 既存の「lex」にたいして、
+;; アクセス用関数（access）を介して、（inc という名前で）新しいふるまいを追加している。
+
+(swap! lex assoc 'inc
+　(fn [] ((@lex 'access) (fn [v] (reset! v (inc @v))))))
+
+;; あとづけの関数「inc」を呼び出している。
+
+user=> ((@lex 'inc))
+101
+user=> ((@lex 'inc))
+102
+user=> ((@lex 'inc))
+103
+
+----------------------------------
+
+;; [ おまけ ]
+
+;; 「val」を deref すると、「init-val」と「current-val」に差異が生じることを確認した。
+;; 「init-val」のほうは、生成時の値を保持しつづける。
+
+user=> (@lex 'init-val)
+100
+user=> ((@lex 'current-val))
+103
+
+;; 「@val」から '@'（deref）を除くと差異は生じなかった。
+;; これ、Clojure のバグでなければ活用したい挙動ではあるけれど、…どうなんだろうなぁ。
+
+----------------------------------
+
+;; [ おまけ２：macros ]
+
+;; ここまで書いたような、プライベートフィールドにアクセスするような関数を、
+;; あとから追加する手続きをマクロでまとてみた。
+
+(defmacro upd-lex [target op-name fnc]
+　`(swap! ~target assoc '~op-name
+　　#(((deref ~target) '~'access) ~fnc)))
+
+;; アクセス用関数を指す「access」のとこだけ、関数「gen-lexicals」の定義と一致させる必要がある。
+;; 対象のレキシカルクロージャ（lexical-closure）にたいして関数（ふるまい）を追加するのに、汎用的に使える。
+
+;;　[ 使用例：プライベートフィールドの値を減じる関数を追加している ]
+
+;;　(upd-lex
+;;　　lex
+;;　　　dec
+;;　　　(fn [v] (reset! v (dec @v))))
+
+
+;;==================================
+;; その２ [ defprotocol ]
+;;==================================
+
+(defprotocol Animal
+ "comment: A protocol for animals that can have some bihaviors."
+ (behaviors [this] "comment: some behaviors an animal can do."))
+
+----------------------------------
+
+;; [ deftype ] (a type has some fields.)
+
+(deftype bird [foot wing tail]
+  Animal
+  (behaviors [this] (str "bird has wings: " (.wing this))))
+
+(deftype dog [foot wing tail])
+
+;; [ extend ]
+
+(extend dog
+　Animal
+　{:behaviors (fn [this] (do '(wag-tail) '(bark)))})
+
+----------------------------------
+
+(def my-dog (->dog 4 0 1))
+(def my-bird (->bird 2 2 1))
+
+
+user=> (.foot my-dog)
+4
+user=> (.wing my-dog)
+0
+user=> (behaviors my-dog)
+(bark)
+
+user=> (behaviors my-bird)
+"bird has wings:2"
+
+==================================
+
+;; [ deftype & extend ]
+
+(deftype bird2 [foot wing tail])
+
+(extend bird2
+　Animal
+　{:behaviors
+　　(fn [this]
+　　　(do
+　　　　(reset! (.wing this) (inc @(.wing this)))
+　　　　(str "this bird has extra wings: " @(.wing this)))) })
+
+----------------------------------
+
+user=> (behaviors (->bird2 2 (atom 2) 1))
+"this bird has extra wings: 3"
+
+
+;;==================================
+;; その３ [ multimethod ]
+;;       (dispatched by fnc "class")
+;;==================================
+
+(deftype pig [foot wing tail])
+(deftype dog [foot wing tail])
+
+;; 別の名前空間で同名の型「pig」を定義している。
+
+(ns foo)
+(deftype pig [foot wing tail extra])
+
+----------------------------------
+
+;; マルチメソッド「behave-multi」を定義（インターフェイス）
+
+(defmulti behave-multi class :default :everything-else)
+
+;; ふるまいの実体を定義
+
+;; ふるまい１：オブジェクトのパラメータ「wing」を返す
+(defmethod behave-multi pig [x]
+　(.wing x))
+
+;; ふるまい２：オブジェクトのパラメータ「foot」を返す
+(defmethod behave-multi :everything-else [x]
+　(.foot x))
+
+----------------------------------
+
+;; 型「user/pig」に合致する場合、該当メソッド（ふるまい１）に振り分けられる。
+;; それ以外の場合は、該当なし用のメソッドに（ふるまい２）。
+
+;; ふるまい１：オブジェクトの2番目の引数「wing」を返す
+;; [ dispatched by fnc ] (checks arg class type)
+
+user=> (behave-multi (->pig 1 2 3))
+2
+
+
+;; ふるまい２：オブジェクトの１番目の引数「foot」を返す
+;; [ default ] (a case that could not dispatch by type)
+
+user=> (behave-multi (->dog 1 2 3))
+1
+
+;; 名前空間がちがう型「pig」も、ちゃんと別ものと判別している。
+;; default (calling a defined type in other namespace. can't use arrow "->".)
+
+user=> (behave-multi (foo.pig. 1 2 3 4))
+1
+
+
+==================================
+2.6 クロージャ (P19-22)
+==================================
+
+(defn make-adderb [n]
+　(let [addn (atom n)]
+　　(fn [x & change]
+　　　(if (nil? change)
+　　　　(+ x @addn)
+　　　　(reset! addn x)))))
+
+----------------------------------
+
+(defprotocol make-dbms (add [this k v]))
+
+(deftype dbms [db]
+　make-dbms
+　(add [this k v] (do
+　　(reset! (.db this) (assoc @(.db this) k v)))))
+
+----------------------------------
+
+;; Clojure の場合、型（type）はクロージャー（closure）のように let で包むことができないみたい。
+;; 「a」生成時に、引数「db」として初期値を渡してる。
+
+user=> (def a (dbms. (atom {'us 'boston 'france 'paris})))
+#'user/a
+
+user=> @(.db a)
+{us boston, france paris}
+
+user=> (add a 'england "london")
+{us boston, france paris, england "london"}
+
+----------------------------------
+
+;; 新たにプロトコル「make-dbms2」を作って、既存の型「dbms」を拡張してみる。
+
+(defprotocol make-dbms2
+　(upd [this lst])
+　(del [this k]))
+
+;; 既存の「a」にたいして動的にふるまいを追加できている。
+;; プライベートフィールドへのアクセスも可能なやつ。
+
+(extend-type dbms
+　make-dbms2
+　(upd [this lst]
+　　(reset! (.db this) (merge @(.db this) lst)))
+
+　(del [this k]
+　　(reset! (.db this) (dissoc @(.db this) k))))
+
+----------------------------------
+
+user=> (upd a {'england "london2"})
+{us boston, france paris, england "london2"}
+
+user=> (del a 'england)
+{us boston, france paris}
+
+user=> (upd a {'england "london" 'japan "tokyo"})
+{us boston, france paris, england "london", japan "tokyo"}
+
+
+=================================
+2.8 末尾再帰 (P24-25)
+=================================
+
+;; ナイーブなやつ
+
+(defn our-length-naive [lst]
+　(if (empty? lst)
+　　0
+　　(+ 1 (our-length (rest lst)))))
+
+
+;; [ tail-recursion ] ※書き方いろいろ
+
+(defn our-find-if [fnc lst]
+　(if (not (empty? lst))
+　　(if (fnc (first lst))
+　　　(first lst)
+　　　(our-find-if fnc (rest lst)))))
+
+(defn our-length [lst]
+　(letfn [(fnc [lst acc]
+　　(if (empty? lst)
+　　　acc
+　　　(recur (rest lst) (inc acc))))]
+
+　　(fnc lst 0)))
+
+(defn our-length2 [lst]
+　(loop [l lst acc 0]
+　　(if (empty? l)
+　　　acc
+　　　(recur (rest l) (inc acc)))))
+
+
+;; [ tail-recursion & type hints ]
+
+(defn triangle [^long n]
+　((fn tri [c n]
+　　(if (zero? n)
+　　　c
+　　　(recur (+ n c) (dec n)))) 0 n))
+
+
+=================================

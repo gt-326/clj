@@ -1,0 +1,232 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+〜データ構造は何かを表現するために使われる〜
+
+・配列（幾何学的変換）
+・ツリー（指揮系統）
+・グラフ（鉄道網）
+
+データ構造はこのような表現媒体（手段）になる。
+Lisp ではクロージャーが表現手段に使われることがある（…で、それはどんなとき？）。
+
+〜クロージャー（closure） は、なにを表現できる？〜
+
+・クロージャーの変数束縛によって情報を内包させられる
+・そして、そんなクロージャーどうしで束縛を共有させることができる
+・クロージャーどうしをお互いに参照する「グループ」としてまとめる
+・複雑なデータ構造の「ポインタ」として活用する（「ハイブリッド・オブジェクト」）。
+
+　クロージャーは、
+　　①　アクティブに
+　　②　ローカルな状態を保持でき、
+　　③　複数のインスタンスを作る
+　ことが可能という、（「接点」としてネットワークを表現するのに）便利な性質がある。
+
+
+=====================================
+6.1 ネットワーク (P79-81)
+=====================================
+
+〜伝統的なネットワークの探索（「20の質問」）〜
+
+・まずは、どの言語でも実現できるやり方を、と。
+・ノードごとに名前をつけて、Hashmap に情報を保持している。
+
+
+(def NODES (atom {}))
+
+(defn defnode [[name conts & [node-yes node-no]]]
+　(swap! NODES assoc
+　　(keyword name)
+　　{:question conts :yes node-yes :no node-no}))
+
+(map defnode
+　'((people "Is the person a man ?" male female)
+　　(male "Is he living ?" penny deadman)
+　　(deadman "Was he American ?" us them)
+　　(us "Is he on a coin ?" coin cidence)
+　　(coin "Is the coin a penny ?" penny coins)
+　　(penny "lincoln")))
+
+(defn run-node
+　([name nodes] (run-node name nodes 1))
+　([name nodes cnt]
+　　(if-let [node ((keyword name) nodes)]
+　　　(if (= nil (:yes node) (:no node))
+　　　　(:question node)
+　　　　(do
+　　　　　(if (= cnt 1) (println "-- Twenty Questions --"))
+
+　　　　　(print (format "%s: %s [y/n] >> " cnt (:question node)))
+　　　　　(flush)
+　　　　　(recur
+　　　　　　(node (if (= (read-line) "y") :yes :no))
+　　　　　　nodes
+　　　　　　(inc cnt)))))))
+
+----------------------------------
+
+user=> @NODES
+{:people {:question "Is the person a man ?", :yes male, :no female}, :male {:question "Is he living ?", :yes penny, :no deadman}, :deadman {:question "Was he American ?", :yes us, :no them}, :us {:question "Is he on a coin ?", :yes coin, :no cidence}, :coin {:question "Is the coin a penny ?", :yes penny, :no coins}, :penny {:question "lincoln", :yes nil, :no nil}}
+
+user=> (run-node 'people @NODES)
+-- Twenty Questions --
+1: Is the person a man ? [y/n] >> y
+2: Is he living ? [y/n] >> n
+3: Was he American ? [y/n] >> y
+4: Is he on a coin ? [y/n] >> y
+5: Is the coin a penny ? [y/n] >> y
+"lincoln"
+
+
+=====================================
+6.2 ネットワークのコンパイル (P81-84)
+=====================================
+
+〜ネットワークの探索を単一の抽象化手法をもちいて実現する（同じく「20の質問」）〜
+
+・じゃあ、Lisp にしかできないやり方って、どんなもの？
+
+;; [ 「コンパイル」その１：ネットワーク全体をコードに変換する ]
+
+・「NODES_2」に name キーでノードを登録するのは変わらない。
+・ノードの情報は、Hashmap 値ではなく、無名関数（クロージャー）として登録する。
+・実行用の関数「run-node」を省くことができた。
+・実行時にネットワークを再定義（変更）することも可能らしいぞ〜（わおう、…って、でもどうやって！？）。
+
+
+(def NODES_2 (atom {}))
+
+(defn defnode2 [[name conts & [node-yes node-no]]]
+　(swap! NODES_2 assoc
+　　(keyword name)
+　　　(fn []
+　　　　(if (= nil node-yes node-no)
+　　　　　conts
+　　　　　(do
+　　　　　　(print (format "%s [y/n] >> " conts))
+　　　　　　(flush)
+　　　　　　(let [fnc ((keyword (if (= (read-line) "y") node-yes node-no)) @NODES_2)]
+　　　　　　　(if fnc
+　　　　　　　　(fnc)
+　　　　　　　　;; a guard for Execution error (NullPointerException)
+　　　　　　　　((fn [] fnc)))))))))
+
+(map defnode2
+　'((people "Is the person a man ?" male female)
+　　(male "Is he living ?" penny deadman)
+　　(deadman "Was he American ?" us them)
+　　(us "Is he on a coin ?" coin cidence)
+　　(coin "Is the coin a penny ?" penny coins)
+　　(penny "lincoln")))
+
+----------------------------------
+
+user=> (:people @NODES_2)
+#object[user$defnode2$fn__3269 0x236abd59 "user$defnode2$fn__3269@236abd59"]
+
+user=> (:penny @NODES_2)
+#object[user$defnode2$fn__3269 0x2b491793 "user$defnode2$fn__3269@2b491793"]
+
+user=> ((:people @NODES_2))
+Is the person a man ? [y/n] >> y
+Is he living ? [y/n] >> n
+Was he American ? [y/n] >> y
+Is he on a coin ? [y/n] >> y
+Is the coin a penny ? [y/n] >> y
+"lincoln"
+
+----------------------------------
+
+;; [ 「コンパイル」その２：静的参照による ]
+
+・実行時にネットワークを変更することがない、という前提ならば、こんなのも可能だよ、と。
+
+・Hashmap ではなく、入れ子の list を用いてる。
+・NODES_3 はクロージャーを持つわけではない（atom にしているのは、nil を設定し、あとで挙動を比べるため）。
+
+(def NODES_3
+　(atom
+　　'((people "Is the person a man ?" male female)
+　　　(male "Is he living ?" penny deadman)
+　　　(deadman "Was he American ?" us them)
+　　　(us "Is he on a coin ?" coin cidence)
+　　　(coin "Is the coin a penny ?" penny coins)
+　　　(penny "lincoln"))))
+
+
+・ネットワーク全体を一度にコンパイルする。
+・再帰的にツリーの「葉」、'(penny "lincoln") のとこまで下りてって、
+　戻りながら各節点で２つの部分ツリーそれぞれに対応する節点／クロージャーを返している。
+
+(defn compile-net
+　([root nodes] (compile-net root nodes 1))
+　([root nodes cnt]
+　　(let [node (first (for [n nodes :when (= root (first n))] n))]
+　　　(if (nil? node)
+　　　　;; a guard for Execution error (NullPointerException)
+　　　　(fn [] node)
+
+　　　　(let [ conts (second node)
+　　　　　　　　yes (first (rest (rest node)))
+　　　　　　　　no (first (rest (rest (rest node)))) ]
+　　　　　(fn []
+　　　　　　(if (= nil yes no)
+　　　　　　　conts
+　　　　　　　(do
+　　　　　　　　(if (= cnt 1) (println "-- Twenty Questions --"))
+
+　　　　　　　　(print (format "%s: %s [y/n] >> " cnt conts))
+　　　　　　　　(flush)
+　　　　　　　　((compile-net
+　　　　　　　　　(if (= (read-line) "y") yes no)
+　　　　　　　　　nodes
+　　　　　　　　　(inc cnt)))))))))))
+　　　　　　　　
+----------------------------------
+
+user=> (compile-net 'people @NODES_3)
+#object[user$compile_net$fn__3248 0x595157f3 "user$compile_net$fn__3248@595157f3"]
+
+user=> (compile-net 'penny @NODES_3)
+#object[user$compile_net$fn__3248 0x6cbfe4b5 "user$compile_net$fn__3248@6cbfe4b5"]
+
+user=> ((compile-net 'people @NODES_3))
+-- Twenty Questions --
+1: Is the person a man ? [y/n] >> y
+2: Is he living ? [y/n] >> n
+3: Was he American ? [y/n] >> y
+4: Is he on a coin ? [y/n] >> y
+5: Is the coin a penny ? [y/n] >> y
+"lincoln"
+
+user=> ((compile-net 'people nil))
+nil
+
+----------------------------------
+
+;; n に束縛したあと、NODES_3 に nil を設定してみる。
+
+user=> (def n (compile-net 'people @NODES_3))
+#'user/n
+user=> (reset! NODES_3 nil)
+nil
+user=> @NODES_3
+nil
+
+
+;; 定義時にコンパイル済みなので、n は実行時には NODES_3 を参照していないことが分かる。
+;; 挙動は前回と変わらない。
+
+user=> (n)
+-- Twenty Questions --
+1: Is the person a man ? [y/n] >> y
+2: Is he living ? [y/n] >> n
+3: Was he American ? [y/n] >> y
+4: Is he on a coin ? [y/n] >> y
+5: Is the coin a penny ? [y/n] >> y
+"lincoln"
+
+
+=====================================

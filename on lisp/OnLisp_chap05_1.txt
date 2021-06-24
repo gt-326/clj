@@ -1,0 +1,390 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+=====================================
+5.1 Common Lisp は進化する (P63-65)
+=====================================
+
+;; 連結関数。
+;; 「パラメータの型に応じてオペレータを切り替える多態性を実現するには？」
+;; にたいする、実装の一例として。
+
+;; 無名関数を持つ HashMap を atom を生成する関数「gen-joiner」。
+;; key が文字列になってるのがダサいけど、ちゃんとディスパッチできている。
+
+(defn gen-joiner []
+　(atom { "class clojure.lang.PersistentList"
+　　　　　　　(fn [lst] (do (println "lst:") (apply concat lst)))
+
+　　　　　　"class java.lang.Long"
+　　　　　　　(fn [nums] (do (println "num:") (apply + nums))) }))
+
+(def joiner (gen-joiner))
+
+(defn join [& args]
+　(let [type (str (class (first args)))]
+　　((@joiner type) args)))
+
+
+user=> (join 1 2 3)
+num:
+6
+
+user=> (join '(1) '(2 3))
+lst:
+(1 2 3)
+
+-------------------------------------
+
+;; あとづけで、オペレータを追加することも可能。
+;; コンス用の無名関数を追加する、の巻。
+
+(reset! joiner
+　(merge @joiner {
+　　"class clojure.lang.Cons"
+　　(fn [cns] (do (println "cns:") (apply concat cns))) }))
+
+
+user=> (keys @joiner)
+("class clojure.lang.PersistentList" "class java.lang.Long" "class clojure.lang.Cons")
+user=> (join (cons 1 '()) '(2 3))
+cns:
+(1 2 3)
+
+
+=====================================
+5.2 直交性 (P65-67)
+=====================================
+
+;; 非破壊的な関数と対をなす、等価な、破壊的な関数を呼び出す仕組みを定義している。
+;; 無理矢理、Clojure で実現してみる。…こんな感じかなぁ（マクロぢゃん！とか言わないでね：苦笑）。
+
+(def equivs! (atom {}))
+
+(defmacro def! [fnc]
+　`(swap! equivs! assoc '~fnc
+　　　(fn [~'var-name] (alter-var-root (resolve ~'var-name) (resolve '~fnc)))))
+
+(defmacro ! [fnc]
+　`(or (@equivs! '~fnc) #(~fnc (eval %))))
+
+-------------------------------------
+
+user=> @equivs!
+{}
+user=> (def foo 0)
+#'user/foo
+
+
+;; 非破壊的な関数が呼び出されます（破壊的な関数が未登録のため）。
+
+user=> ((! inc) 'foo)
+1
+user=> foo
+0
+
+
+;; 破壊的な inc を追加している。
+;; そして、上と同じように呼び出しているが、呼び出されるのは破壊的な関数の方。
+
+user=> (def! inc)
+{inc #object[user$eval3380$fn__3381 0x9c1e395 "user$eval3380$fn__3381@9c1e395"]}
+user=> ((! inc) 'foo)
+1
+user=> foo
+1
+
+;; dec でも同じように。
+
+user=> @equivs!
+{inc #object[user$eval3380$fn__3381 0x9c1e395 "user$eval3380$fn__3381@9c1e395"]}
+user=> ((! dec) 'foo)
+0
+user=> foo
+1
+user=> (def! dec)
+{ inc #object[user$eval3380$fn__3381 0x9c1e395 "user$eval3380$fn__3381@9c1e395"],
+  dec #object[user$eval3396$fn__3397 0x263faf0e "user$eval3396$fn__3397@263faf0e"] }
+user=> ((! dec) 'foo)
+0
+user=> foo
+0
+
+
+=====================================
+5.3 関数の値のメモ化 (P67-68)
+=====================================
+
+;; 「車輪」の再実装、ですが。
+
+(defn my-memoize [fnc]
+　(let [cache (atom {})]
+　　(fn [& args]
+　　　(if-let [rslt-exists (@cache args)]
+　　　　{:cache @cache :rslt-exists rslt-exists}
+
+　　　　(let [rslt-new (apply fnc args)]
+　　　　　(swap! cache assoc args rslt-new)
+　　　　　rslt-new)))))
+
+(def slowly (my-memoize (fn [x] (. Thread sleep 1000) x)))
+
+
+;; キャッシュ済みなら、すぐに結果が返ってくる。
+;; :cache は、キャッシュ中身の状態がどんななのか、確認する意味で書いてます。
+;; key は可変長の引数「(1)」、val は「1」と雑な登録の仕方ですが。
+
+user=> (time (slowly 1))
+"Elapsed time: 1001.798185 msecs"
+1
+user=> (time (slowly 1))
+"Elapsed time: 0.054072 msecs"
+{:cache {(1) 1}, :rslt-exists 1}
+
+
+=====================================
+5.4 関数を合成する (P68-70)
+=====================================
+
+;; 「車輪」の再実装、ですが。
+
+(defn comp
+  "Takes a set of functions and returns a fn that is the composition
+  of those fns.  The returned fn takes a variable number of args,
+  applies the rightmost of fns to the args, the next
+  fn (right-to-left) to the result, etc."
+  {:added "1.0"
+   :static true}
+  ([] identity)
+  ([f] f)
+
+　;; 合成する関数が２つ渡された
+　([f g]
+     (fn
+       ([] (f (g)))
+       ([x] (f (g x)))
+       ([x y] (f (g x y)))
+       ([x y z] (f (g x y z)))
+       ([x y z & args] (f (apply g x y z args)))))
+
+　;; 合成する関数が２つ以上渡された
+  ([f g & fs]
+     (reduce1 comp (list* f g fs))))
+
+-------------------------------------
+
+(defn fif [pif pthen & pelse]
+　(fn [x]
+　　(if (pif x)
+　　　(pthen x)
+　　　((first pelse) x))))
+
+(defn fint [fnc & fns]
+　(if fns
+　　(fn [x]
+　　　(and
+　　　　(fnc x)
+　　　　((apply fint fns) x)))
+　　fnc))
+
+(defn fun [fnc & fns]
+　(if fns
+　　(fn [x]
+　　　(or
+　　　　(fnc x)
+　　　　((apply fun fns) x)))
+　　fnc))
+
+-------------------------------------
+
+user=> (map (fif #(odd? %) #(str % ":odd") #(str % ":even")) (range 5))
+("0:even" "1:odd" "2:even" "3:odd" "4:even")
+
+user=> ((fint #(= 0 (rem % 3)) #(= 0 (rem % 5))) 15)
+true
+user=> ((fint #(= 0 (rem % 3)) #(= 0 (rem % 5)) #(= 0 (rem % 10))) 15)
+false
+
+user=> ((fun #(= 0 (rem % 3)) #(= 0 (rem % 5)) #(= 0 (rem % 10))) 15)
+true
+
+
+=====================================
+5.5 Cdr 部での再帰 (P70-72)
+=====================================
+
+・ここでは「再帰の抽象構造」を抽出して、関数 lrec としている。
+・…ただ、「ためにする抽象化」というのか、曲芸じみているな、と。
+・下記、our-list-length のように、定義（束縛）時に、関数 lrec の引数として fnc を設定することを前提にしている。
+
+(defn lrec
+　([fnc] (lrec fnc ()))
+　([fnc base]
+　　(fn self [lst]
+　　　(if (empty? lst)
+　　　　(if (fn? base) (base) base)
+　　　　(fnc (first lst) (self (rest lst)))))))
+
+;; [ recur版　（引数 base、fnc の順序を入れ換えた）]
+
+(defn tail-lrec
+　([fnc] (tail-lrec () fnc))
+　([base fnc]
+　　#(loop [lst % rslt (if (fn? base) (base) base)]
+　　　(if (empty? lst)
+　　　　rslt
+　　　　(recur
+　　　　　(rest lst)
+　　　　　(fnc (first lst) rslt))))))
+
+-------------------------------------
+
+・「再帰の抽象構造」を抽出している lrec だが、
+　実行時（たとえば、下記 user=> (our-list-length (range 100)) だが）に渡される、
+　引数のリスト（この場合 (range 100) ですね）の末尾に到達するまで、引数として渡された fnc への引数 rslt として、
+　関数 lrec 内部の関数 self は、自分自身を繰り返し渡している。
+
+・使えば難しくはないんだけど、不必要に複雑になっているな、と（上の説明文を書いていても、ウンザリする：苦笑）。
+
+-------------------------------------
+
+;; [ 定義（束縛）時　その１ ]
+
+(def our-list-length
+　(lrec
+　　(fn [obj rslt] (+ 1 rslt))
+　　0))
+
+(def our-list-length
+　(tail-lrec
+　　0
+　　(fn [obj rslt] (+ 1 rslt))))
+
+(def my-every-odd
+　(tail-lrec
+　　true
+　　(fn [obj rslt] (and rslt (odd? obj)))))
+
+-------------------------------------
+
+;; [ 実行時 ]
+
+user=> (our-list-length (range 100))
+100
+user=> (my-every-odd '(1 2 3))
+false
+user=> (my-every-odd '(1 3 5))
+true
+
+=====================================
+
+;; [ 定義（束縛）時　その２ ]
+
+(def add100-obj
+　(tail-lrec () (fn [obj rslt] (concat rslt (list (+ obj 100))))))
+
+(def is-even-obj
+　(tail-lrec () (fn [obj rslt] (concat rslt (list (even? obj))))))
+
+(def find-even-obj
+　(tail-lrec () (fn [obj rslt] (if (even? obj) (cons obj rslt) rslt))))
+
+(def cntr-find-a
+　(tail-lrec 0 (fn [obj rslt] (+ (if (#(= 'a obj)) 1 0) rslt))))
+
+(def cntr-find-element
+　(fn [trgt]
+　　(tail-lrec 0 (fn [obj rslt] (+ (if (#(= trgt obj)) 1 0) rslt)))))
+
+-------------------------------------
+
+;; [ 実行時 ]
+
+user=> (add100-obj (range 10))
+(100 101 102 103 104 105 106 107 108 109)
+
+user=> (is-even-obj (range 10))
+(true false true false true false true false true false)
+
+user=> (find-even-obj (reverse (range 10)))
+(0 2 4 6 8)
+
+user=> (cntr-find-a '(a b a))
+2
+user=> ((cntr-find-element 'b) '(a b a))
+1
+
+=====================================
+
+;; [ 遊んでみる ]
+
+■loop/recur版　（関数 fnc の引数の数が３つになっている）
+
+(defn tail-lrec2 [init fnc]
+　(fn self
+　　([trgt] (self () trgt)) ;; '()
+　　([opr trgt]
+　　　(loop [lst trgt rslt (if (fn? init) (init) init)]
+　　　　(if (empty? lst)
+　　　　　rslt
+　　　　　(recur
+　　　　　　(rest lst)
+　　　　　　(fnc opr rslt (first lst))))))))
+
+(defn tail-lrec2 [init fnc]
+　(fn self
+　　([trgt] (self identity trgt)) ;; identity
+　　([opr trgt]
+　　　(loop [lst trgt rslt (if (fn? init) (init) init)]
+　　　　(if (empty? lst)
+　　　　　rslt
+　　　　　(recur
+　　　　　　(rest lst)
+　　　　　　(fnc opr rslt (first lst))))))))
+
+-------------------------------------
+
+(def our-length
+　(tail-lrec2 0 (fn [opr rslt obj] (+ 1 rslt))))
+
+(def our-every
+　(tail-lrec2 true (fn [opr rslt obj] (and rslt (opr obj)))))
+
+
+user=> (our-length (range 100))
+100
+
+;; add new param [ opr: odd? ]
+
+user=> (our-every odd? '(1 3 5))
+true
+user=> (our-every odd? '(1 3 5 6))
+false
+
+-------------------------------------
+
+(def copy-list
+　(tail-lrec2 () (fn [opr rslt obj] (cons obj rslt))))
+
+(def remove-dupl
+　(tail-lrec2 () (fn [opr rslt obj] (distinct (cons obj rslt)))))
+
+(def find-if
+　(tail-lrec2 nil (fn [opr rslt obj] (if (opr obj) obj rslt))))
+
+(def my-some
+　(tail-lrec2 false (fn [opr rslt obj] (or (opr obj) rslt))))
+
+-------------------------------------
+
+(def fndcnt
+　(tail-lrec2 0 (fn [opr rslt obj] (+ (if (opr obj) 1 0) rslt))))
+
+(def add100-obj
+　(tail-lrec2 () (fn [opr rslt obj] (concat rslt (list (+ obj 100))))))
+
+(def my-every
+　(tail-lrec2 true (fn [opr rslt obj] (and rslt (opr obj)))))
+
+
+=====================================
