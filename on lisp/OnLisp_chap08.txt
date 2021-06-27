@@ -108,11 +108,12 @@ nil
 　　(/ (+ ~@args) ~(count args))))
 
 ----------------------------------
-;; 「特徴４」にたいする試行錯誤（my-apply ver.1〜4）
+;; 「特徴４」にたいする試行錯誤（my-apply ver.1〜3）
 ----------------------------------
 
 ;; 可変長の引数を渡したければ、こんなのどおだろう？
-;; eval がちとあれだなぁ。引数を (list 1 2 3) こんな感じで渡さなきゃいけないのも…。
+;; eval がちとあれだなぁ…。でも上記「count」と同様に eval はオーバーヘッドにならないはずだから、
+;; いいのかなぁ？
 
 (defmacro my-apply [opr lst]
 　`(~opr ~@(eval lst)))
@@ -128,38 +129,32 @@ user=> (my-apply avg '(1 2 3))
 2.0
 
 
-;; …ということで、引数を判別するようにした。
-;; リストの先頭がオペレーターかどうかで挙動を変えている。
-;; オペレータがマクロだった場合はお手上げ。長いし、eval ２つに増えてるし…。うーん。
-
-;; 変換なし：(range 10)
-;; 変換あり：(1 2 3) -> (list 1 2 3)
-
-(defmacro my-apply2 [opr lst]
-　`(~opr ~@(eval (if (fn? (eval (first lst))) lst (concat '(list) lst)))))
-
-
-;; この場合、マクロではなく関数を使うほうが自然なのかもしれない。
+;; この場合、関数を使うこともできる。
 ;; …ただ、オペレーターがマクロの場合は明示的にクォートを付与しなきゃいけない。
 
-(defn my-apply3 [opr lst]
+(defn my-apply2 [opr lst]
 　(eval `(~opr ~@lst)))
 
-user=> (my-apply3 avg-fn '(10 20 30))
+user=> (my-apply2 avg-fn '(10 20 30))
 20.0
 
-user=> (my-apply3 'avg (range 10))
+user=> (my-apply2 'avg (range 10))
 4.5
 
-user=> (my-apply3 avg (range 10))
+user=> (my-apply2 avg (range 10))
 Syntax error compiling at (REPL:1:1).
 Can't take value of a macro: #'user/avg
 
 
 ;; 実行時に eval 呼び出しは効率が悪いのなら、やっぱりマクロを使うべきらしいんで、
-;; こうするのかなぁ、と。これで実行時のオーバーヘッドを避けられるのか分からないけれど、
-;; 「my-apply3」で見られたオペレータ（関数、マクロ）の呼び出し時の差異を吸収することができました。
-;; この点については、「my-apply」の時点で実現できているか。
+;; 無名関数で eval を包めばいいのかな、と。
+
+(defmacro my-apply3 [opr lst]
+　`(~(fn [o l] (eval `(~o ~@l))) '~opr ~lst))
+
+
+;; 内部関数 fnc を定義してるバージョン。
+;; これで実行時のオーバーヘッドを避けられるのか分からないけれど。
 
 (defmacro my-apply4 [opr lst]
 　(letfn [(fnc [o l] (eval `(~o ~@l)))]
@@ -179,26 +174,20 @@ user=> (my-apply4 avg (range 10))
 (defmacro my-fnc [opr lst]
 　`(fn [] (my-apply ~opr ~lst)))
 
-(defmacro my-fnc2 [opr lst]
-　`(fn [] (my-apply4 ~opr ~lst)))
-
-
-;; list を付与しないといけなかったり。
-
 user=> ((my-fnc avg (list 1 2 3)))
 2.0
 
-user=> ((my-fnc avg (range 10)))
-4.5
 
+;; 関数に引数を持たせたい場合は、アナフォリックな変数（~'n）にしないといけない。
 
-;; Lisp の文法としても違和感がなくなった。
+(defmacro my-fnc2 [opr lst]
+　`(fn [~'n] (* ~'n (my-apply3 ~opr ~lst))))
 
-user=> ((my-fnc2 avg-fn '(1 2 3)))
-2.0
+user=> (def bar (my-fnc2 avg-fn '(1 2 3)))
+#'user/bar
 
-user=> ((my-fnc2 avg (range 10)))
-4.5
+user=> (bar 4)
+8.0
 
 ----------------------------------
 
