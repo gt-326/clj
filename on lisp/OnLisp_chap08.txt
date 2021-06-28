@@ -210,7 +210,41 @@ user=> (baz 4)
 
 ----------------------------------
 
-;; [ おまけ ]
+;; [ おまけ１ ]
+
+;; アナフォリックな ~'n の評価順序が柔軟だな、と。
+
+(defmacro my-fnc3 [opr lst]
+　`(fn [] (* ~'n (my-apply3 ~opr ~lst))))
+
+
+user=> (def n 10)
+#'user/n
+
+user=> (def foo
+　(my-fnc3 avg '(1 2 3)))
+  #_=> #'user/foo
+
+;; def の n を参照している。
+
+user=> (foo)
+20.0
+
+
+;; let で包んだ場合は、let の n を参照する
+
+user=> (def foo
+　(let [n 100]
+　　(my-fnc3 avg '(1 2 3))))
+  #_=>   #_=> #'user/foo
+
+user=> (foo)
+200.0
+
+
+----------------------------------
+
+;; [ おまけ２ ]
 
 user=> (bench (my-apply avg-fn (range 100)))
 {:result ----, :elapsed 235549}
