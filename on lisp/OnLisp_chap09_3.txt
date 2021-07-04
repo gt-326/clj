@@ -1,0 +1,360 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+
+(defmacro me [expr]
+　`(pprint (macroexpand '~expr)))
+
+(defmacro me1 [expr]
+　`(pprint (macroexpand-1 '~expr)))
+
+(defmacro bench [expr & flg]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　　result#
+　　　{ :result (if ~@flg result# ~''----)
+　　　　:elapsed (- (System/nanoTime) start#) }))
+
+=====================================
+9.4 適切な名前によって捕捉を避ける (P128)
+=====================================
+
+;; こんな感じかな？
+;; 関数型プログラミングのスタイルに則って実現できるのかなぁ？
+
+(def *warnings* (atom nil))
+
+(defn gripe [warning]
+　(do
+　　(swap! *warnings* #(concat % (list warning)))
+　　(deref *warnings*)))
+
+(defn simple-ratio [v w]
+　(let [vn (count @v) wn (count @w)]
+　　(if (or (< vn 2) (< wn 2))
+　　　(gripe "sample < 2")
+　　　(/ vn wn))))
+
+----------------------------------
+
+;; 適切な名前づけでというけれど、ここでは let で（無名）関数を包むことで、
+;; 意図しない捕捉（上書き）がなされないことが確認できる。
+
+　引数なし：　それまでの累積したメッセージを返す
+　引数あり：　メッセージを追加する
+
+(let [w (atom nil)]
+　(defn gripe [& warning]
+　　(do
+　　　(if warning
+　　　　(swap! w #(concat % warning)))
+　　　(deref w))))
+
+
+;; 関数でも動作するんだけど（文字数も少ない）、マクロならこうかな？
+;; 「9.2」の状態(P123-124)からちょっと変更している。
+;; 「gen-gripe」は「gripe」生成用マクロだ。
+
+(defmacro gen-gripe []
+　`(let [~'w (atom nil)]
+　　(fn [& ~'warning]
+　　　(do
+　　　　(if ~'warning
+　　　　　(swap! ~'w #(concat % ~'warning)))
+　　　　(deref ~'w)))))
+
+(def gripe (gen-gripe))
+
+----------------------------------
+
+(defn simple-ratio [v w]
+　(let [vn (count @v) wn (count @w)]
+　　(if (or (< vn 2) (< wn 2))
+　　　(gripe "sample < 2")
+　　　(/ vn wn))))
+
+;; w1 にメッセージが追加されていないことが分かる。
+
+user=> (let [v1 (atom '(1 2 3)) w1 (atom '(1))]
+　　(simple-ratio v1 w1)
+　　(println @w1))
+  #_=>   #_=> (1)
+nil
+
+user=> (gripe)
+("sample < 2")
+
+
+=====================================
+9.5 事前評価によって捕捉を避ける (P128-131)
+=====================================
+
+;; 補助関数
+
+(defn position [obj lst]
+　(loop [cnt 0 l lst]
+　　(if (empty? l)
+　　　nil
+　　　(if (= obj (first l))
+　　　　cnt
+　　　　(recur (inc cnt) (rest l))))))
+
+
+;; [ 「変数捕捉を起こしやすい」とされているやつ ]
+
+(defmacro _before [x y l]
+　`(let [~'lst (atom ~l)
+　　　　　~'p1 (position ~x (deref ~'lst))
+　　　　　~'p2 (position ~y (deref ~'lst)) ]
+　　(and ~'p1 ~'p2 (< ~'p1 ~'p2))))
+
+
+;; [ 「正しいバージョン」とされているやつ ]
+
+(defmacro before [x y l]
+　`(let [~'x_val ~x
+　　　　　~'y_val ~y
+　　　　　~'lst (atom ~l)
+　　　　　~'p1 (position ~'x_val (deref ~'lst))
+　　　　　~'p2 (position ~'y_val (deref ~'lst)) ]
+　　(and ~'p1 ~'p2 (< ~'p1 ~'p2))))
+
+----------------------------------
+
+;; どちらも普通に動作するっぽいけれど、状況によって挙動がかわってくる…。
+
+user=> (_before 'a 'b '(a b))
+true
+
+user=> (before 'a 'b '(a b))
+true
+
+----------------------------------
+
+;; 「正しいバージョン」を展開してみる。
+
+user=> (me1 (before
+　(do
+　　(reset! lst '(b a))
+　　'a)
+　'b
+　'(a b)))
+  #_=>   #_=>   #_=>   #_=>   #_=> (clojure.core/let
+ [x_val
+  (do (reset! lst '(b a)) 'a)
+  y_val
+  'b
+  lst
+  (clojure.core/atom '(a b))
+  p1
+  (user/position x_val @lst)
+  p2
+  (user/position y_val @lst)]
+ (clojure.core/and p1 p2 (clojure.core/< p1 p2)))
+nil
+
+;; …あ、なるほど。
+;; なんでこんなことをするの？と思ったけれど、
+;; 引数 x、y をわざわざ let している。しかも、引数 l よりも先に（<- ここ大事！）。
+;; こうすることで、変数 x、y にて副作用を起こしても lst のバインドに影響がない、ということかぁ。
+
+
+;; 第一引数「(do (reset! lst '(b a)) 'a)」も、
+;; マクロの外側で捕捉可能な変数 lst が存在しないと、エラーになる。
+
+user=> (before
+　(do (reset! lst '(b a)) 'a)
+　'b
+　'(a b))
+  #_=>   #_=>   #_=> Syntax error compiling at (REPL:2:6).
+Unable to resolve symbol: lst in this context
+
+----------------------------------
+
+;; マクロの内側、外側の違いはあれど、
+;; どちらのマクロも内部の変数 lst と変数捕捉自体は起こっている。
+
+user=> (def lst (atom '(a b)))
+#'user/lst
+
+
+;; [ 結果：正しくない ]
+
+user=> (_before
+　(do (reset! lst '(b a)) 'a)
+　'b
+　'(a b))
+  #_=>   #_=>   #_=> false
+
+;; 第一引数「(do (reset! lst '(b a)) 'a)」がマクロ内部の lst を変更している。
+
+user=> @lst
+(a b)
+
+
+;; [ 結果：正しい ]
+
+user=> (before
+　(do (reset! lst '(b a)) 'a)
+　'b
+　'(a b))
+  #_=>   #_=>   #_=> true
+
+;; ただ、マクロの外側の変数を変更しいるのは、このマクロ呼び出しをした人で、
+;; マクロ自体は問題ない、と。
+
+user=> @lst
+(b a)
+
+----------------------------------
+
+;; [ おまけ ]
+
+;; 以下のように let の順序を入れ換えると、とたんに結果が正しくなくなる。
+
+(defmacro before2 [x y l]
+　`(let [~'lst (atom ~l)
+　　　　　~'x_val ~x
+　　　　　~'y_val ~y
+　　　　　~'p1 (position ~'x_val (deref ~'lst))
+　　　　　~'p2 (position ~'y_val (deref ~'lst)) ]
+　　(and ~'p1 ~'p2 (< ~'p1 ~'p2))))
+
+
+;; [ 結果：正しくない ]
+
+user=> (before2
+　(do (reset! lst '(b a)) 'a)
+　'b
+　'(a b))
+  #_=>   #_=>   #_=> false
+
+----------------------------------
+
+;; マクロに渡している変数名を、直接処理のなかで用いるのではなく、
+;; 無名関数の引数の名前にしてしまえば、という対応。
+
+;; 「9.1」のときのやつは無限ループになるので、
+;; ここでは挙動を比較しやすいように、条件を変更している（"<=" から "<" に変更した）
+
+(defmacro my-for [[var start stop] & body]
+　`(loop [~var ~start ~'limit ~stop]
+　　(when (< ~var ~'limit)
+　　　~@body
+　　　(recur (inc ~var) ~'limit))))
+
+(defmacro my-for2 [[var start stop] & body]
+　`(loop [~'fnc (fn [~var] ~@body) ~'cnt ~start ~'limit ~stop]
+　　(when (< ~'cnt ~'limit)
+　　　(~'fnc ~'cnt)
+　　　(recur ~'fnc (inc ~'cnt) ~'limit))))
+
+
+;; limit の変数捕捉も起きず、ちゃんと実行されるようになったことを確認。
+
+user=> (my-for [limit 0 10] (print limit　" "))
+nil
+
+user=> (my-for2 [limit 0 10] (print limit　" "))
+0  1  2  3  4  5  6  7  8  9  nil
+
+
+=====================================
+9.6 Gensym によって捕捉を避ける (P131-133)
+=====================================
+
+(defmacro my-for3 [[var start stop] & body]
+　(let [g_stop (gensym)]
+　　`(loop [~var ~start ~g_stop ~stop]
+　　　(when (<= ~var ~g_stop)
+　　　　~@body
+　　　　(recur (inc ~var) ~g_stop)))))
+
+
+user=> (let [g_stop (gensym)] g_stop)
+G__2099
+
+user=> (let [g_stop 5]
+　(my-for3 [i 0 10]
+　　(if (> i g_stop) (println [i g_stop]))))
+  #_=>   #_=> [6 5]
+[7 5]
+[8 5]
+[9 5]
+[10 5]
+nil
+
+
+=====================================
+9.7 パッケージによって捕捉を避ける (P133)
+=====================================
+
+;; common lisp の「パッケージ」は clojure では何にあたるんだろう？
+;; 今のところよく分かってないので、保留。
+
+=====================================
+9.8 その他の名前空間における捕捉  (P133)
+=====================================
+
+;; 捕捉が起こるのは変数だけではない、と。
+;; わざと捕捉を起こすべく、名前空間を除くためにアナフォリック（~'fnc）にしている。
+
+(defmacro mac [x1] `(~'fnc ~x1))
+
+(defn fnc [x] (+ x 1))
+
+
+user=> (mac 10)
+11
+
+user=> (letfn[(fnc [y] (- y 1))]
+　(mac 10))
+  #_=> 9
+
+user=> (letfn[(fnc2 [y] (- y 1))]
+　(mac 10))
+  #_=> 11
+
+----------------------------------
+
+;; 関数捕捉の４ケース
+
+１．上記の fnc ような自由なシンボルの捕捉。
+　-> 解決策：コードを独立した「パッケージ」に入れること。
+
+２．捕捉の危険のあるシンボルが組み込み関数、マクロを再束縛してしまう捕捉。
+　-> 解決策：様々な問題が起こる。（対策のしようがないので、）何もしないでおくのが理にかなっている。
+
+３．common lisp の go や throw で使われるタグ「からも」捕捉が起こりえるよ、と。
+　-> 解決策：clojure ではブロックはないので、考えなくてよさそう。
+
+４．上記以外の場合。
+　-> 解決策：ローカルに定義されたどのような関数も、変数の時とと同じように関数名には gensym を使うこと。
+
+
+=====================================
+9.9 変数捕捉にこだわる理由 (P135)
+=====================================
+
+;; 変数捕捉なんてめったに起こらない、などと考えるなかれ、と。
+
+　・バグのないコードが書けるのに、なぜ、あえてバグありコードを書くのですか？
+　・他人が使うコードを書いているなら、そのコードは作者の予測できない使われ方をするかもしれない。
+　　また、その「使用者」はプログラムかもしれない。
+
+
+　　before の作者はこのような呼び出し方をされることを覚悟せよ、と（「9.5」より）。
+
+　　　(before
+　　　　(do (reset! lst '(b a)) 'a)
+　　　　'b
+　　　　'(a b))
+
+
+;; 個々のマクロの展開結果は単純で分かりやすいものでも、マクロ呼び出しを組み合わせるようになると、
+;; とたんに、その展開形は人が書いたものとはかけ離れた（巨大な）ものになり得る。
+
+;; たとえそれがどれだけ不自然に思えても、
+;; マクロが不適切に展開された場合に備えた「防衛策」をとっておいて損はない。
+
+
+=====================================

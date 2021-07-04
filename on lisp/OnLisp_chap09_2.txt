@@ -1,0 +1,504 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+
+(defmacro me [expr]
+　`(pprint (macroexpand '~expr)))
+
+(defmacro me1 [expr]
+　`(pprint (macroexpand-1 '~expr)))
+
+(defmacro bench [expr & flg]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　　result#
+　　　{ :result (if ~@flg result# ~''----)
+　　　　:elapsed (- (System/nanoTime) start#) }))
+
+=====================================
+9.3 捕捉はいつおきるのか (P124-128)
+=====================================
+
+;; 捕捉対象になるのがこの２つ
+
+　・マクロ引数（呼び出し時に、「変数名」などにするべくマクロに渡されるシンボル）
+　・自由なシンボル（マクロ内にて、値を束縛していない状態で現れるシンボル）
+
+;; 説明するために、以下の「概念」を（おぼろげながらも）定義している
+
+　・自由
+　・骨格
+
+----------------------------------
+
+・概念　その１：「自由」
+
+　;; 以下の例では W、Y だけが「自由なまま」現れている
+
+　　(let [x Y z 10]
+　　　(list W x z))
+
+　;; 以下の例では X が「自由」
+
+　　(let [x X]
+　　　x)
+
+----------------------------------
+
+・概念　その２：「骨格」
+
+　;; 引数の値にかかわらず変化がない部位を「骨格」と呼んでいるみたい
+
+　　(defmacro foo [x y]
+　　　`(/ (+ ~x 1) ~y))
+
+　　展開　　　　　：(clojure.core// (clojure.core/+ (- 5 2) 1) 6)
+　　「骨格」抽出　：(clojure.core// (clojure.core/+         1)  )
+
+----------------------------------
+
+;; 「捕捉可能」なシンボルは、以下のいずれか、またはその両方を満たしている
+;; （※　読みにくいんで、勝手に読点を打ってます）
+
+　(a) マクロ展開の骨格内で、そのシンボルが自由なまま現れている。
+　(b) マクロに渡された引数が束縛、または評価される骨格の一部に、そのシンボルが束縛されている。
+
+----------------------------------
+
+;; [ その１ ]　(a)
+
+;; 引数をとらないマクロなので、(b)ではないだろう、と判断した。
+;; 「x は骨格内で自由なまま現れるだろうから、捕捉可能だ。」との説明がある。…これはどういう意味だろう？
+;; たしかに let によって初期化されたりはしていない。
+
+　(defmacro cap1 [] '(+ x 1))
+
+
+;; １ー１．
+;; 「捕捉可能だ。」というのは、（誰かによって）捕捉されることが可能、という意味なのか？
+;; cap1 の呼び出しよりも前で x が定義されていれば、その値と束縛される。
+
+user=> (let [x 1] (list x (cap1)))
+(1 2)
+
+user=> (let [x 100] (list x (cap1)))
+(100 101)
+
+
+;; １ー２．
+;; それとも、展開先の変数を捕捉することが可能、という意味なのか？
+;; 「gripe」のバグはこっちだと思うけど。
+
+user=> (let [x 100 x (cap1)] x)
+101
+
+----------------------------------
+
+;; [ その２ ]　(a)、(b)
+
+;; この「その２」は、「my-for」（P121）で見られたエラーの原因だという。
+;; カウンター変数と、上限値を保持する変数の名前が「limit」とダブっている状態。
+
+user=> (me (my-for [limit 0 10] (println limit)))
+(loop*
+ [limit 0 limit 10]
+ (clojure.core/when
+  (clojure.core/<= limit limit)
+  (println limit)
+  (recur (clojure.core/inc limit) limit)))
+nil
+
+user=> (my-for [limit 0 10] (println limit))
+nil
+
+----------------------------------
+
+;; 「x とマクロ呼び出しの引数とが共に束縛される」との説明がある。
+
+　(defmacro cap2 [var]
+　　`(let [~'x ...
+　　　　　　~var ...]
+　　　...))
+
+　(defmacro cap2-impl [var]
+　　`(let [~'x (inc ~'x)
+　　　　　　~var (inc ~'x)]
+　　　(list ~'x ~var)))
+
+user=> (def x 5)
+#'user/x
+
+user=> (cap2-impl y)
+(6 7)
+
+;; 変数名がダブるとリストの先頭の x の値が変わってしまう。
+
+user=> (cap2-impl x)
+(7 7)
+
+
+;; cap2-impl の x 初期値として、展開先の x にバインドされた値を参照している。
+
+　(defmacro bar [var]
+　　`(let [~'x 100 ~var 200]
+　　　(concat (cap2-impl ~var) (list ~'x ~var))))
+
+　(defn bar-fn [var]
+　　(let [x 100 var 200]
+　　　(concat (cap2-impl var) (list x var))))
+
+
+;;----------------------------------
+;; [ マクロから cap2-impl を呼び出す場合 ]
+;;----------------------------------
+
+user=> (bar y)
+(101 102 100 200)
+
+user=> (me1 (bar y))
+(clojure.core/let
+ [x 100 y 200]
+ (clojure.core/concat (user/cap2-impl y) (clojure.core/list x y)))
+nil
+
+;; 捕捉が発生した。
+
+user=> (bar x)
+(202 202 200 200)
+
+user=> (me1 (bar x))
+(clojure.core/let
+ [x 100 x 200]
+ (clojure.core/concat (user/cap2-impl x) (clojure.core/list x x)))
+nil
+
+
+;;----------------------------------
+;; [ 関数から cap2-impl を呼び出す場合 ]
+;;----------------------------------
+
+user=> (bar-fn 'y)
+(101 102 100 200)
+
+;; 引数に x を渡しても、値が変わらない。
+;; 変数捕捉が起こっていない、ということなんだけど。うーん。
+
+user=> (bar-fn 'x)
+(101 102 100 200)
+
+----------------------------------
+
+　(defn baz [var]
+　　`(let [~'x 100 ~var 200]
+　　　(list ~'x ~var)))
+
+　(defn foo [var]
+　　`(let [~'x 100 ~(resolve var) 200]
+　　　(list ~'x ~(resolve var))))
+
+
+;; x、user/x、#'user/x とそれぞれ別物のシンボルとみなされるみたい。
+
+user=> (baz 'x)
+(clojure.core/let [x 100 x 200] (clojure.core/list x x))
+
+user=> (baz 'y)
+(clojure.core/let [x 100 y 200] (clojure.core/list x y))
+
+user=> (foo 'x)
+(clojure.core/let [x 100 #'user/x 200] (clojure.core/list x #'user/x))
+
+
+;; その結果に eval 掛けてみると、以下のようになる。
+
+user=> (eval (baz 'x))
+(200 200)
+
+user=> (eval (baz 'y))
+(100 200)
+
+user=> (eval (foo 'x))
+Syntax error macroexpanding clojure.core/let at (REPL:1:1).
+#'user/x - failed: simple-symbol? at: [:bindings :form :local-symbol] spec: :clojure.core.specs.alpha/local-name
+#'user/x - failed: vector? at: [:bindings :form :seq-destructure] spec: :clojure.core.specs.alpha/seq-binding-form
+#'user/x - failed: map? at: [:bindings :form :map-destructure] spec: :clojure.core.specs.alpha/map-bindings
+#'user/x - failed: map? at: [:bindings :form :map-destructure] spec: :clojure.core.specs.alpha/map-special-binding
+
+
+----------------------------------
+
+;; [ その３ ]
+
+　(defmacro cap3 [var]
+　　`(let [~'x ...]
+　　　(let [~var ...]
+　　　　...)))
+
+;; [ その４ ]
+
+　(defmacro cap4 [var]
+　　`(let [~var ...]
+　　　(let [~'x ...]
+　　　　...)))
+
+----------------------------------
+
+;; この場合は「x は捕捉可能ではない」とのこと。
+;; 以下のような特徴がある。
+
+　・それぞれの let が可視なのは、x と引数のみである。
+　・変数は「骨格」に束縛されている（…が、その種の変数がすべて危険というわけではない、という例）。
+
+　(defmacro safe1 [var]
+　　`(do
+　　　(let [~'x 1] (println ~'x))
+　　　(let [~var 1] (println ~var))))
+
+user=> (safe1 y)
+1
+1
+nil
+
+----------------------------------
+
+;; これも、x は捕捉不可能。
+;; 「expr に渡された引数を評価する時点では、x の新たな束縛はまだ可視ではないからだ」という。
+
+　(defmacro safe2 [expr]
+　　`(let [~'x ~expr]
+　　　(cons ~'x '(1))))
+
+user=> (safe2 (range 10))
+((0 1 2 3 4 5 6 7 8 9) 1)
+
+user=> (me1 (safe2 (range 10)))
+(clojure.core/let [x (range 10)] (clojure.core/cons x '(1)))
+nil
+
+user=> (me (safe2 (range 10)))
+(let* [x (range 10)] (clojure.core/cons x '(1)))
+nil
+
+----------------------------------
+
+;; [ その５ ]
+
+;; 「cap5 の中では、x は捕捉可能だ」とある。
+;; 読んでいても、「safe2」が問題なくて「cap5」がマズい、というのがよく分からない。
+
+;; マクロ呼び出しの引数が、「骨格」によって作られた束縛のなかで評価されたら、
+;;
+
+　(defmacro cap5 [& body]
+　　`(let [~'x ...]
+　　　~@body))
+
+　(defmacro cap5-impl [& body]
+　　`(let [~'x '(1)]
+　　　~@body))
+
+
+;; ちゃんと let のスコープのなかで値を保持しており、問題なさそうだが…。
+
+user=> (cap5-impl (cons x (range 10)))
+((1) 0 1 2 3 4 5 6 7 8 9)
+
+user=> (cap5-impl (list x (let [x (cons x (range 10))] x) x))
+((1) ((1) 0 1 2 3 4 5 6 7 8 9) (1))
+
+
+;; こういうことかな？
+
+　(defmacro cap5-impl2 [& body]
+　　`(let [~'x (atom 1)]
+　　　~@body))
+
+user=> (cap5-impl2 (list @x (do (swap! x inc) @x) @x))
+(1 2 2)
+
+
+----------------------------------
+
+;; var に設定した値が束縛される点以外は、どのシンボルも意図しない捕捉の危険性はない。
+
+　(defmacro safe3 [var & body]
+　　`(let [~var ...]
+　　　~@body))
+
+　(defmacro safe3-impl [var & body]
+　　`(let [~var (atom 1)]
+　　　~@body))
+
+
+;; うーん。
+;; 危険性があると言われる「cap5-impl2」と同じ挙動を起こせるのだが？
+
+user=> (safe3-impl x (list @x (do (swap! x inc) @x) @x))
+(1 2 2)
+
+
+----------------------------------
+
+;; 「my-for」（P121）を再掲
+
+(defmacro my-for [[var start stop] & body]
+　`(loop [~var ~start ~'limit ~stop]
+　　(when (<= ~var ~'limit)
+　　　~@body
+　　　(recur (inc ~var) ~'limit))))
+
+
+;; ここでは '(limit 1 5) の car と、マクロ内部の ~'limit とで衝突している。
+;; この場合、無限に 5 を出力し続ける。
+
+user=> (me (my-for (limit 1 5) (print limit " ")))
+(loop*
+ [limit 1 limit 5]
+ (clojure.core/when
+  (clojure.core/<= limit limit)
+  (print limit " ")
+  (recur (clojure.core/inc limit) limit)))
+nil
+
+
+;; 衝突しない i を出力するように指定。
+
+user=> (my-for (i 1 5) (print i " "))
+1  2  3  4  5  nil
+
+;; body 内部で limit を呼び出した場合も、ヘンな挙動になる。
+
+user=> (my-for (i 1 5) (print limit " "))
+5  5  5  5  5  nil
+
+----------------------------------
+
+;; この例は、let で atom を束縛している変数の名前がマクロ内部の ~'limit と衝突している。
+
+user=> (let [limit (atom 0)]
+　(my-for (x 1 10) (swap! limit #(+ % x)))
+　@limit)
+  #_=>   #_=> Execution error (ClassCastException) at user/eval2426 (REPL:2).
+java.lang.Long cannot be cast to clojure.lang.IAtom
+
+
+;; let で atom を束縛している変数の名前を変更すると、機能する（ limit2 ）。
+
+user=> (let [limit2 (atom 0)]
+　(my-for (x 1 10) (swap! limit2 #(+ % x)))
+　@limit2)
+  #_=>   #_=> 55
+
+----------------------------------
+
+;; 値を上書きできるように、あえて limit を atom に変更してる。
+
+(defmacro my-for2 [[var start stop] & body]
+　`(loop [~var ~start ~'limit ~stop]
+　　(when (<= ~var (deref ~'limit))
+　　　~@body
+　　　(recur (inc ~var) ~'limit))))
+
+
+user=> (def limit (atom 100))
+#'user/limit
+
+;; 終了条件の limit に初期値 (atom 1) を設定して、展開してみる。
+;; これを実行すると、limit は x より常に 1 大きな値のままで差が埋まることがない。
+;; そのため、無限ループになる。
+
+user=> (me1 (my-for2
+　　(x 0 (atom 1))
+　　(swap! limit #(+ % x))
+　　(print @limit " ")))
+  #_=>   #_=>   #_=> (clojure.core/loop
+ [x 0 limit (atom 1)]
+ (clojure.core/when
+  (clojure.core/<= x @limit)
+  (swap! limit (fn* [p1__2077#] (+ p1__2077# x)))
+  (print @limit " ")
+  (recur (clojure.core/inc x) limit)))
+nil
+
+;; 終了条件の limit に初期値 (atom 0) を設定して、境界値をテストする。
+;; 条件 (when (<= x @limit) ...) を満たすのは最初の一回だけ。
+;; (print @limit " ") の結果 0 が出力されている。
+
+user=> (my-for2
+　　(x 0 (atom 0))
+　　(swap! limit #(+ % x))
+　　(print @limit " "))
+  #_=>   #_=>   #_=> 0  nil
+
+
+=====================================
+
+;; 「上の３個のテストを満たしながら、
+;; なお意図しない変数捕捉を引き起こし得るようなマクロが書ける」(P127) とある。
+;; 「３個のテスト」というのがどれを指しているのか、何度読み返しても判然としないが、まぁいいや。
+
+;; 下のマクロ「_pathological」を構成する部品の挙動
+
+user=> (flatten '(0 (a i u e o) 1))
+(0 a i u e o 1)
+
+user=> (filter symbol? '(0 (a i u e o) 1))
+(a i u e o)
+
+user=> (filter (complement odd?) (range 10))
+(0 2 4 6 8)
+
+user=> (let [lst '(a i u e o)]
+　(nth (vec lst) (rand-int (count lst))))
+  #_=> u
+
+----------------------------------
+
+;; 「_pathological」を動かしてみると、
+;; 変数捕捉うんぬんの前段階で、作りに問題アリだな、と。
+
+(defmacro _pathological [& body]
+　(let* [syms (filter symbol? (flatten body))
+　　　　　var (nth (vec syms) (rand-int (count syms)))]
+　　`(let [~var 99]
+　　　~@body)))
+
+
+;; 以下の例だと、50 % の確率で let で シンボル list に 99 を束縛する。
+;; シンボル a に束縛されたときだけ、リストを返す。
+
+user=> (_pathological (list 0 a 1))
+(0 99 1)
+
+;; シンボル list に 99 が束縛された場合、クォートしていない a を評価しようとしてエラーになる。
+;; 仮に、その問題を解消したとしても、(99 0 'a 1) というリストの car が 99 がオペレータではない、という
+;; エラーになるだろうけど。
+
+user=> (_pathological (list 0 a 1))
+Syntax error compiling at (REPL:1:15).
+Unable to resolve symbol: a in this context
+
+----------------------------------
+
+;; 引数の先頭はオペレータだろうから、それをシンボルリスト syms に含めないようにした。
+;; ただ、var に束縛したもの以外のシンボルが引数に含まれていると、
+;; そのシンボルの解釈のところでエラーとなる。
+
+(defmacro pathological [& body]
+　(let* [syms (filter symbol? (rest (flatten body)))
+　　　　　var (nth (vec syms) (rand-int (count syms)))]
+　　`(let [~var 99]
+　　　~@body)))
+
+user=> (pathological (list 0 a 1))
+(0 99 1)
+
+
+;; let で 99 を束縛したシンボル以外のものは、すべてクォートしてやらないとエラーに。
+;; 以下の場合、a、b のどちらかがランダムに束縛する対象になる。
+
+user=> (pathological (list 0 a b 1))
+Syntax error compiling at (REPL:1:15).
+Unable to resolve symbol: b in this context
+
+
+=====================================

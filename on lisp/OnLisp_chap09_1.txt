@@ -1,0 +1,248 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+
+(defmacro me [expr]
+　`(pprint (macroexpand '~expr)))
+
+(defmacro me1 [expr]
+　`(pprint (macroexpand-1 '~expr)))
+
+(defmacro bench [expr & flg]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　　result#
+　　　{ :result (if ~@flg result# ~''----)
+　　　　:elapsed (- (System/nanoTime) start#) }))
+
+=====================================
+9.1 マクロ引数の捕捉 (P121-122)
+=====================================
+
+;; 以下のように、limit が user/limit と評価される。
+;; 展開時 loop で user/limit を再束縛しようとする形になるため、実行時にエラーになる。
+
+user=> (def limit 20)
+#'user/limit
+
+user=> (defmacro my-for_ [[var start stop] & body]
+　`(loop [~var ~start limit ~stop]
+　　(when (<= ~var limit)
+　　　~@body
+　　　(recur (inc ~var) limit))))
+  #_=>   #_=>   #_=>   #_=> #'user/my-for_
+
+user=> (me (my-for_ [v 0 10] (println v)))
+(loop*
+ [v 0 user/limit 10]
+ (clojure.core/when
+  (clojure.core/<= v user/limit)
+  (println v)
+  (recur (clojure.core/inc v) user/limit)))
+nil
+
+user=> (my-for_ [v 0 10] (println v))
+Syntax error compiling loop* at (REPL:1:1).
+Can't let qualified name: user/limit
+
+----------------------------------
+
+;; …ということで。
+;; limit という変数を、あえてアナフォリックにして名前空間のところを除いた。
+;; 本章のテーマである変数捕捉が起こるようになった。
+
+(defmacro my-for [[var start stop] & body]
+　`(loop [~var ~start ~'limit ~stop]
+　　(when (<= ~var ~'limit)
+　　　~@body
+　　　(recur (inc ~var) ~'limit))))
+
+
+user=> (my-for [v 1 5] (print (str v " ")))
+1 2 3 4 5 nil
+
+user=> (my-for [v 0 10] (println limit))
+10
+10
+10
+10
+10
+10
+10
+10
+10
+10
+10
+nil
+
+
+;; body 部分の「(println v)」の v が解決できないよ、というエラーが発生するやつ。
+
+(my-for [limit 0 10] (println v))
+
+
+;; 第一引数の値を変更（ v -> limit ）して、あえて変数捕捉を起こすようにしたやつ。
+
+(my-for [limit 0 10] (println limit))
+
+;; 展開形を比較してみると。
+;; 繰り返しの実行条件がおかしくなっているのが分かる：
+;; (clojure.core/when
+;;   (clojure.core/<= limit limit)
+
+user=> (me (my-for [v 0 10] (println limit)))
+(loop*
+ [v 0 limit 10]
+ (clojure.core/when
+  (clojure.core/<= v limit)
+  (println limit)
+  (recur (clojure.core/inc v) limit)))
+nil
+
+user=> (me (my-for [limit 0 10] (println limit)))
+(loop*
+ [limit 0 limit 10]
+ (clojure.core/when
+  (clojure.core/<= limit limit)
+  (println limit)
+  (recur (clojure.core/inc limit) limit)))
+nil
+
+----------------------------------
+
+;; この節の最後の例。
+;; 動作しないことは確認したものの、
+;; この例は何を伝えるためのものなのだろう？
+;; 気がついたのは、（上とちがって）me が効かなくなったな、と（let のせいかな？）。
+
+user=> (me
+　(let [limit 5]
+　　(my-for [i 0 10]
+　　　(if (> i limit) (println i)))))
+  #_=>   #_=>   #_=> (let* [limit 5] (my-for [i 0 10] (if (> i limit) (println i))))
+nil
+
+user=> (let [limit 5]
+　(my-for [i 0 10]
+　　(when (> i limit) (println i))))
+  #_=>   #_=> nil
+
+
+;; …あ、なるほど！
+;; 繰り返し自体はおこなわれるものの、同じ limit を見ているため、
+;; when の条件：(<= i limit)と、 if の条件：(> i limit)による論理積 (AND)が成立することがない、ってわけか。
+
+;; あと、その場合の limit は let ではなく、loop の 10 のほうになるのね。
+;; じゃあ if の条件を変えてみると…。
+
+user=> (let [limit 5]
+　(my-for [i 0 10]
+　　(if (< i limit) (println i))))
+  #_=>   #_=> 0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+nil
+
+
+=====================================
+9.2 自由なシンボルの捕捉 (P123-124)
+=====================================
+
+;; 捕捉させるために、swap! のとこを ~'w とアナフォリックにしている。
+;; そうしないと Clojure が名前空間を付与してくれるため、ちゃんと w のほうを更新してくれる。
+
+(def w (atom nil))
+
+(defmacro gripe [warning]
+　`(do
+　　(swap! ~'w #(concat % (list ~warning)))
+　　(deref ~'w)))
+
+;; ここで言う「自由変数」は引数の v、w だが、この例では w のほうを捕捉している。
+
+(defn simple-ratio [v w]
+　(let [vn (count @v) wn (count @w)]
+　　(if (or (< vn 2) (< wn 2))
+　　　(gripe "sample < 2")
+　　　(/ vn wn))))
+
+----------------------------------
+
+user=> (let [w (atom nil)] (gripe "sample < 2"))
+("sample < 2")
+
+user=> (let [v1 (atom '(1 2 3)) w1 (atom '(1 2 3))]
+　　(simple-ratio v1 w1)
+　　(println @w1))
+  #_=>   #_=> (1 2 3)
+nil
+
+;; 関数「simple-ratio」内にマクロ展開されたマクロ「gripe」は、
+;; 関数の引数を捕捉し、let の w1 のほうに値 "sample < 2" が付加されていることが分かる。
+
+user=> (let [v1 (atom '(1 2 3)) w1 (atom '(1))]
+　　(simple-ratio v1 w1)
+　　(println @w1))
+  #_=>   #_=> (1 sample < 2)
+nil
+
+user=> @w
+nil
+
+----------------------------------
+
+;; [ おまけ ]
+
+;; atom ではなく、素の変数でやれないかな、と思ったけれど、
+;; 「alter-var-root」は更新対象の変数を名前空間付きで指定するので、
+;; ここで意図するような「simple-ratio」内での束縛はムリみたい。
+
+(def w nil)
+
+(defmacro gripe2 [var warning]
+  `(do
+     (alter-var-root ~(resolve var) #(concat % (list ~warning)))
+     ~var))
+
+;; let で束縛した w を更新してくれない。
+
+user=> (list w (let [w '(1)] (gripe2 w "sample < 2")) w)
+(nil (1) ("sample < 2"))
+
+
+;; 名前空間を付与したいよう、「resolve」を除いてみたら以下のようなエラーを吐いてくれる。
+;; let で束縛している値によって変わるが、やっぱり束縛はムリで機能しない。
+
+(defmacro gripe2-2 [var warning]
+  `(do
+     (alter-var-root ~var #(concat % (list ~warning)))
+     ~var))
+
+user=> (me1 (gripe2-2 w "sample < 2"))
+(do
+ (clojure.core/alter-var-root
+  w
+  (fn*
+   [p1__2747__2748__auto__]
+   (clojure.core/concat
+    p1__2747__2748__auto__
+    (clojure.core/list "sample < 2"))))
+ w)
+nil
+
+user=> (let [w nil] (gripe2-2 w "sample < 2"))
+Execution error (NullPointerException) at user/eval2768 (REPL:1).
+null
+
+user=> (let [w '(1)] (gripe2-2 w "sample < 2"))
+Execution error (ClassCastException) at user/eval2772 (REPL:1).
+clojure.lang.PersistentList cannot be cast to clojure.lang.Var
+
+
+=====================================
