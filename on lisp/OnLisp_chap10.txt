@@ -252,6 +252,9 @@ null
 (defmacro or-a [& args]
 　`(or-expand ~@args))
 
+(defmacro or-a [& args]
+　(apply or-expand args))
+
 ----------------------------------
 
 (defmacro or-b
@@ -260,6 +263,25 @@ null
 　([x & next]
 　　`(let [or# ~x]
 　　　(if or# or# (or-b ~@next)))))
+
+----------------------------------
+
+;; [ おまけ ]
+
+(defn or-c [& args]
+　(loop [lst# args]
+　　(if (not (empty? lst#))
+　　　(let [sym# (first lst#)]
+　　　　(if sym# sym# (recur (rest lst#)))))))
+
+
+(defn or-expand2 [args]
+　(if (not (empty? args))
+　　(let [sym# (first args)]
+　　　(if sym# sym# (recur (rest args))))))
+
+(defmacro or-d [& args]
+　(or-expand2 args))
 
 
 =====================================
