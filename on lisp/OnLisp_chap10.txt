@@ -133,8 +133,114 @@ user=> (string-call "our+" 2 3)
 
 ----------------------------------
 
-;; 中盤以降に出てくる副作用ものは Clojure で実現できなさそうなので、
-;; パスします。
+;; 超ナイーブなやつだけど、まぁ例を実現している。
+
+(defmacro et-al [& args]
+　(if (= 1 (count args))
+　　`(alter-var-root (var ~(first args)) #(concat % (list ~''et ~''al)))
+　　`(concat '~args (list ~''et ~''al))))
+
+user=> (et-al smith jones)
+(smith jones et al)
+
+user=> (def greats '(leonardo michelangelo))
+#'user/greats
+
+user=> greats
+(leonardo michelangelo)
+
+user=> (et-al greats)
+(leonardo michelangelo et al et al)
+
+user=> greats
+(leonardo michelangelo et al et al)
+
+----------------------------------
+
+;; & パラメータが付いた引数に変更を加えるマクロは、
+;; 自己書き換えをおこなうプログラムになっちゃいかねない、という。
+
+;; その副作用を用いた例をむりくりトレースしてみたが…。
+;; いちおう、実行するたんびに実行結果が変わる関数「foo」です。
+
+
+(def x '(X))
+
+(defmacro echo [& args]
+　`(if (var? (var ~(first args)))
+　　(alter-var-root (var ~(first args)) #(concat % (list ~''amen)))))
+
+(defn foo [] (echo x))
+
+
+user=> (foo)
+(X amen)
+
+user=> (foo)
+(X amen amen)
+
+user=> (foo)
+(X amen amen amen)
+
+user=> x
+(X amen amen amen)
+
+----------------------------------
+
+;; 本題ではないが、トリッキーなクォートのテクニックを紹介している。
+;; 副作用をともなわない concat と同じ効果がある。
+
+(defmacro echo2 [& args]
+　`'(~@args ~'amen))
+
+
+user=> (echo2 1 2 3)
+(1 2 3 amen)
+
+user=> ((fn [& args] `(~@args ~'amen)) 1 2 3)
+(1 2 3 amen)
+
+user=> ((fn [& args] (concat args (list 'amen))) 1 2 3)
+(1 2 3 amen)
+
+
+;; 可変個の引数をとる関数内でコンシングを避けるテクニックとして、
+;; マクロを使ってコンシングをコンパイル時にずらす、という。その詳細は、「第13章」（P185-192）で。
+
+----------------------------------
+
+;; [ おまけ ]
+
+;; いろいろ書き方があるな、と。
+
+(defmacro echo []
+　`(reset! ~'rslt (concat (deref ~'rslt) (list ~''amen))))
+
+(defmacro echo []
+　`(swap! ~'rslt #(concat % (list ~''amen))))
+
+(let [rslt (atom '(x))]
+　(defn foo []
+　　(echo)))
+
+
+user=> (foo)
+(x amen)
+
+user=> (foo)
+(x amen amen)
+
+user=> (foo)
+(x amen amen amen)
+
+----------------------------------
+
+(defmacro echo [v]
+　`(swap! ~v #(concat % (list ~''amen))))
+
+(let [rslt (atom '(x))]
+　(defn foo2 []
+　　(echo rslt)))
 
 
 =====================================
@@ -142,7 +248,6 @@ user=> (string-call "our+" 2 3)
 =====================================
 
 ・関数のときのような自分自身を呼び出すタイプの再帰は、マクロの場合ムリ（下記「nth-b」参照）。
-・
 
 ;;----------------------------------
 ;; 引数のリストのサイズを返す関数
