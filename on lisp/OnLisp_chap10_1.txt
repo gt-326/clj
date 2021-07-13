@@ -1,0 +1,392 @@
+;; 『On Lisp』のコード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+
+(defmacro me [expr]
+　`(pprint (macroexpand '~expr)))
+
+(defmacro me1 [expr]
+　`(pprint (macroexpand-1 '~expr)))
+
+(defmacro bench [expr & flg]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　　result#
+　　　{ :result (if ~@flg result# ~''----)
+　　　　:elapsed (- (System/nanoTime) start#) }))
+
+=====================================
+10.1 評価の回数 (P137-138)
+=====================================
+
+;; 適切なバージョン（「9.6」より）
+
+(defmacro my-for3 [[var start stop] & body]
+　(let [g_stop (gensym)]
+　　`(loop [~var ~start ~g_stop ~stop]
+　　　(when (<= ~var ~g_stop)
+　　　　~@body
+　　　　(recur (inc ~var) ~g_stop)))))
+
+;; 複数回の評価を起こし得るバージョン
+
+(defmacro my-for4 [[var start stop] & body]
+　`(loop [~var ~start]
+　　(when (<= ~var ~stop)
+　　　~@body
+　　　(recur (inc ~var)))))
+
+----------------------------------
+
+user=> (my-for3 [v 0 10] (print v " "))
+0  1  2  3  4  5  6  7  8  9  10  nil
+
+user=> (let [x (atom 2)]
+　(my-for3 [v 0 (do (swap! x inc) @x)] (print v " ")))
+  #_=> 0  1  2  3  nil
+
+
+;; 無限ループになる
+
+;;　(let [x (atom 2)]
+;;　　(my-for4 [v 0 (do (swap! x inc) @x)] (print v " ")))
+
+
+=====================================
+10.2 評価の順番 (P138-139)
+=====================================
+
+;; 左から右へ、と評価される。
+;; 評価の順番によって結果が変わってくる。
+
+user=> (let [x (atom 10)]
+　(+ (reset! x 3) @x))
+  #_=> 6
+
+user=> (let [x (atom 10)]
+　(+ @x (reset! x 3)))
+  #_=> 13
+
+
+;; 評価の順番が間違っている
+
+(defmacro my-for5 [[var start stop] & body]
+　`(loop [g_stop# ~stop ~var ~start]
+　　(when (<= ~var g_stop#)
+　　　~@body
+　　　(recur g_stop# (inc ~var)))))
+
+
+;; v の初期値として x を用いている。
+;; そして、v よりも先にループの上限（stop）へのバインドを先におこなっており、
+;; カウンターが 13 の状態からループが始まっている。
+
+user=> (def x (atom 1))
+#'user/x
+
+user=> (me1 (my-for5 [v @x (do (reset! x 13) @x)] (print v " ")))
+(clojure.core/loop
+ [g_stop__2110__auto__ (do (reset! x 13) @x) v @x]
+ (clojure.core/when
+  (clojure.core/<= v g_stop__2110__auto__)
+  (print v " ")
+  (recur g_stop__2110__auto__ (clojure.core/inc v))))
+nil
+
+user=> (let [x (atom 1)]
+　(my-for5 [v @x (do (reset! x 13) @x)] (print v " ")))
+  #_=> 13  nil
+
+
+;; 「my-for3」なら、同じ引数で実行しても問題なく動作する。
+
+user=> (let [x (atom 1)]
+　(my-for3 [v @x (do (reset! x 13) @x)] (print v " ")))
+  #_=> 1  2  3  4  5  6  7  8  9  10  11  12  13  nil
+
+
+　・この種の問題が顕在化する状況が確実にある。
+　・そのようなバグは、発見するのが極めて難しいものとなる。
+　・意図したとおりにユーティリティーが呼び出されたら、正しく機能しなければならない。
+　・ユーティリティーはバグを隠蔽してもいけない。
+
+
+=====================================
+10.3 マクロ展開関数の副作用 (P140-143)
+=====================================
+
+　・あるマクロ呼び出しは複数回展開され得る。
+　・展開をおこなうコードは引数以外の何にも依存すべきではない。
+　・そして、値を返すほかには周囲の世界に影響をおよぼすべきではない。
+
+
+;; 引数に渡された文字列に該当する関数を呼び出すマクロ。
+;; その関数の有無により結果がかわってくる。
+
+(defn our+ [x y] (+ x y))
+
+(defmacro string-call [op & args]
+　`(~(intern *ns* (symbol op)) ~@args))
+
+
+user=> (string-call "our+" 2 3)
+5
+
+----------------------------------
+
+;; 超ナイーブなやつだけど、まぁ例を実現している。
+
+(defmacro et-al [& args]
+　(if (= 1 (count args))
+　　`(alter-var-root (var ~(first args)) #(concat % (list ~''et ~''al)))
+　　`(concat '~args (list ~''et ~''al))))
+
+user=> (et-al smith jones)
+(smith jones et al)
+
+user=> (def greats '(leonardo michelangelo))
+#'user/greats
+
+user=> greats
+(leonardo michelangelo)
+
+user=> (et-al greats)
+(leonardo michelangelo et al et al)
+
+user=> greats
+(leonardo michelangelo et al et al)
+
+----------------------------------
+
+;; & パラメータが付いた引数に変更を加えるマクロは、
+;; 自己書き換えをおこなうプログラムになっちゃいかねない、という。
+
+;; その副作用を用いた例をむりくりトレースしてみたが…。
+;; いちおう、実行するたんびに実行結果が変わる関数「foo」です。
+
+
+(def x '(X))
+
+(defmacro echo [& args]
+　`(if (var? (var ~(first args)))
+　　(alter-var-root (var ~(first args)) #(concat % (list ~''amen)))))
+
+(defn foo [] (echo x))
+
+
+user=> (foo)
+(X amen)
+
+user=> (foo)
+(X amen amen)
+
+user=> (foo)
+(X amen amen amen)
+
+user=> x
+(X amen amen amen)
+
+----------------------------------
+
+;; 本題ではないが、トリッキーなクォートのテクニックを紹介している。
+;; 副作用をともなわない concat と同じ効果がある。
+
+(defmacro echo2 [& args]
+　`'(~@args ~'amen))
+
+
+user=> (echo2 1 2 3)
+(1 2 3 amen)
+
+user=> ((fn [& args] `(~@args ~'amen)) 1 2 3)
+(1 2 3 amen)
+
+user=> ((fn [& args] (concat args (list 'amen))) 1 2 3)
+(1 2 3 amen)
+
+
+;; 可変個の引数をとる関数内でコンシングを避けるテクニックとして、
+;; マクロを使ってコンシングをコンパイル時にずらす、という。その詳細は、「第13章」（P185-192）で。
+
+----------------------------------
+
+;; [ おまけ ]
+
+;; いろいろ書き方があるな、と。
+
+(defmacro echo []
+　`(reset! ~'rslt (concat (deref ~'rslt) (list ~''amen))))
+
+(defmacro echo []
+　`(swap! ~'rslt #(concat % (list ~''amen))))
+
+(let [rslt (atom '(x))]
+　(defn foo []
+　　(echo)))
+
+
+user=> (foo)
+(x amen)
+
+user=> (foo)
+(x amen amen)
+
+user=> (foo)
+(x amen amen amen)
+
+----------------------------------
+
+(defmacro echo [v]
+　`(swap! ~v #(concat % (list ~''amen))))
+
+(let [rslt (atom '(x))]
+　(defn foo2 []
+　　(echo rslt)))
+
+
+=====================================
+10.4 再帰 (P143-146)
+=====================================
+
+・関数のときのような自分自身を呼び出すタイプの再帰は、マクロの場合ムリ（下記「nth-b」参照）。
+
+;;----------------------------------
+;; 引数のリストのサイズを返す関数
+;;----------------------------------
+
+(defn our-length [x]
+　(if (empty? x)
+　　0
+　　(+ 1 (our-length (rest x)))))
+
+(defn our-length2 [x]
+　(loop [lst x len 0]
+　　(if (empty? lst)
+　　　len
+　　　(recur (rest lst) (inc len)))))
+
+
+;;----------------------------------
+;; リストの n 番目の要素を返すオペレータ「nth」（ver.a 〜 e）
+;;----------------------------------
+
+;; 末尾再帰関数（正しく動作する）
+
+(defn nth-a [n lst]
+　(loop [cnt n l lst]
+　　(if (= cnt 0)
+　　　(first l)
+　　　(recur (dec cnt) (rest l)))))
+
+----------------------------------
+
+;; （再帰関数のノリで書いてはみたものの…）コンパイルできない。
+;;　マクロが、自分自身の呼び出しを展開しつづける無限ループになってしまう。
+
+(defmacro nth-b [n lst]
+　`(if (= ~n 0)
+　　(first ~lst)
+　　(nth-b (dec ~n) (rest ~lst))))
+
+
+user=> (nth-b 4 (range 10))
+Syntax error (StackOverflowError) compiling at (REPL:1:10).
+null
+
+;; [ nth-b 展開：ステップ１ ]
+
+(if (= x 0)
+　(first lst)
+　(nth-b (dec cnt) (rest lst)))
+
+
+;; [ nth-b 展開：ステップ２ ]
+
+(if (= x 0)
+　(first lst)
+　(if (= (dec x) 0)
+　　(first (rest lst))
+　　(nth-b (dec (dec cnt)) (rest (rest lst))))
+
+----------------------------------
+
+;; loop/recur を適用したマクロ
+
+(defmacro nth-c [n lst]
+　`(loop [cnt# ~n l# ~lst]
+　　(if (= cnt# 0)
+　　　(first l#)
+　　　(recur (dec cnt#) (rest l#)))))
+
+----------------------------------
+
+;; 再帰関数の呼び出しに展開させるマクロ。
+;; 引数にクォートをつける手間を省くだけでも意味があるみたい。
+
+(defn nth-fn [n lst]
+　(if (= n 0)
+　　(first lst)
+　　(recur (dec n) (rest lst))))
+
+(defmacro nth-d [n lst]
+　`(nth-fn ~n ~lst))
+
+----------------------------------
+
+(defmacro nth-e [n lst]
+　`(letfn[(nth-fn# [~'n ~'l]
+　　(if (= ~'n 0)
+　　　(first ~'l)
+　　　(recur (dec ~'n) (rest ~'l))))]
+
+　　(nth-fn# ~n ~lst)))
+
+
+;;----------------------------------
+;; 組み込みオペレーター「or」と同じやつを自作すると。
+;;----------------------------------
+
+;; 補助関数「or-expand」を呼ぶマクロ。
+
+(defn or-expand
+　([] nil)
+　([x] x)
+　([x & next]
+　　(let [or# x]
+　　　(if or# or# (apply or-expand next)))))
+
+(defmacro or-a [& args]
+　`(or-expand ~@args))
+
+(defmacro or-a [& args]
+　(apply or-expand args))
+
+----------------------------------
+
+(defmacro or-b
+　([] nil)
+　([x] x)
+　([x & next]
+　　`(let [or# ~x]
+　　　(if or# or# (or-b ~@next)))))
+
+----------------------------------
+
+;; [ おまけ ]
+
+(defn or-c [& args]
+　(loop [lst# args]
+　　(if (not (empty? lst#))
+　　　(let [sym# (first lst#)]
+　　　　(if sym# sym# (recur (rest lst#)))))))
+
+
+(defn or-expand2 [args]
+　(if (not (empty? args))
+　　(let [sym# (first args)]
+　　　(if sym# sym# (recur (rest args))))))
+
+(defmacro or-d [& args]
+　(or-expand2 args))
+
+
+=====================================
