@@ -1,0 +1,114 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+≈========================================
+;; サンクで無限を表現する（P177 - 182）
+========================================
+
+;; 第１引数は、「模擬 LISP データ」。
+;; 第２引数は、処理（関数）群。
+;; CAR 部（opr）と合致する名前の処理（関数）を呼び出す。
+;; CDR 部（data）をデータとして、その処理の引数に設定する。
+
+(def MATCH
+　(fn [[opr & data] pattern] ((pattern opr) data)))
+
+;; 型（もしくは「名前空間」）：STRM
+
+(def STRM
+
+　;; 処理パターン（関数）
+　{ 'take (fn [aStream n]
+　　　(MATCH aStream
+　　　　{ 'con (fn [[head & tailThunk]]
+　　　　　　(if (= 0 n)
+　　　　　　　'(emp)
+　　　　　　　(list 'con head ((STRM 'take) ((first tailThunk)) (- n 1))))) }))
+　})
+
+;; MATCH を使わないバージョン
+
+(def STRM2
+
+　;; 処理パターン（関数）
+　{ 'take (fn [[opr & data] n]
+　　　((opr
+　　　　{ 'con (fn [[head & tailThunk]]
+　　　　　　(if (= 0 n)
+　　　　　　　'(emp)
+　　　　　　　(list 'con head ((STRM2 'take) ((first tailThunk)) (- n 1))))) })
+　　　　data))
+　})
+
+;; 擬似 LISP データを生成する部品
+
+(defn enumFrom [fnc n]
+　(list 'con n (fn [] (enumFrom fnc (fnc n)))))
+
+----------------------------------------
+
+;; 擬似 LISP データを生成する
+
+user=> ((STRM 'take) (enumFrom identity 1) 5)
+(con 1 (con 1 (con 1 (con 1 (con 1 (emp))))))
+
+user=> ((STRM 'take) (enumFrom inc 1) 5)
+(con 1 (con 2 (con 3 (con 4 (con 5 (emp))))))
+
+
+;; 擬似 LISP データを生成する（その２）
+
+user=> ((STRM2 'take) (enumFrom identity 1) 5)
+(con 1 (con 1 (con 1 (con 1 (con 1 (emp))))))
+
+user=> ((STRM2 'take) (enumFrom inc 1) 5)
+(con 1 (con 2 (con 3 (con 4 (con 5 (emp))))))
+
+
+========================================
+;; 無限のストリームの変換
+========================================
+
+;; 型（もしくは「名前空間」）：LST
+
+(def LST
+
+　;; 処理パターン（関数）
+　{ 'toArray (fn [alist]
+　　　(letfn [(toArrayHelper [alist acc]
+　　　　(MATCH alist
+　　　　　{ 'emp (fn [& args] (vec acc))
+　　　　　　'con (fn [[h & t]] (toArrayHelper (first t) (concat acc (list h)))) }))]
+　　　　(toArrayHelper alist '())))
+　})
+
+;; MATCH を使わないバージョン
+
+(def LST2
+
+　;; 処理パターン（関数）
+　{ 'toArray (fn [alist]
+　　　(letfn [ (toArrayHelper [[opr & data] acc]
+　　　　((opr
+　　　　　{ 'emp (fn [& args] (vec acc))
+　　　　　　'con (fn [[h & t]] (toArrayHelper (first t) (concat acc (list h)))) })
+　　　　　data)) ]
+　　　　(toArrayHelper alist '())))
+　})
+
+----------------------------------------
+
+;; 擬似 LISP データを評価し、変換する
+
+user=> ((LST 'toArray) ((STRM 'take) (enumFrom inc 1) 10))
+[1 2 3 4 5 6 7 8 9 10]
+
+
+;; 擬似 LISP データを評価し、変換する（その２）
+
+user=> ((LST2 'toArray) ((STRM2 'take) (enumFrom inc 11) 10))
+[11 12 13 14 15 16 17 18 19 20]
+
+
+========================================≈

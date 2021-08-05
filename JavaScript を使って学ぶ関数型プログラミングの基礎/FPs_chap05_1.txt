@@ -1,0 +1,65 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+========================================
+;; 代数的データ構造とパターンマッチング（P140 - 146）
+========================================
+
+(def MATCH_0
+　(fn [name]
+　　(fn [[opr & data] pattern] (((name opr) data) pattern))))
+
+(def lst
+　{ 'emp (fn [& args]
+　　　　　　(fn [pattern] ((pattern 'emp))))
+　　'con (fn [alist]
+　　　　　　(fn [pattern] ((pattern 'con) alist))) })
+
+(def my-last
+　(fn [alist]
+　　((MATCH_0 lst)
+　　　alist
+　　　{ 'emp (fn [& args] nil)
+　　　　'con (fn [[h & t]]
+　　　　　　　　((MATCH_0 lst)
+　　　　　　　　　(first t)
+　　　　　　　　　{ 'emp (fn [& args] h)
+　　　　　　　　　　'con (fn [& args] (my-last (first t))) })) })))
+
+;;　関数型プログラミングスタイル
+
+(defn my-last2 [matcher]
+　(fn [alist]
+　　((matcher lst)
+　　　alist
+　　　{ 'emp (fn [& args] nil)
+　　　　'con (fn [[h & t]]
+　　　　　　　　((matcher lst)
+　　　　　　　　　(first t)
+　　　　　　　　　{ 'emp (fn [& args] h)
+　　　　　　　　　　'con (fn [& args] ((my-last2 matcher) (first t))) })) })))
+
+;; MATCH を使わないバージョン
+
+(def my-last3
+　(fn [alist]
+　　(((lst (first alist)) (rest alist))
+　　　{ 'emp (fn [& args] nil)
+　　　　'con (fn [[h & t]]
+　　　　　　　　(((lst (first (first t))) (rest (first t)))
+　　　　　　　　　{ 'emp (fn [& args] h)
+　　　　　　　　　　'con (fn [& args] (my-last3 (first t))) })) })))
+
+----------------------------------------
+
+user=> (my-last '(con 1 (con 2 (con 3 (emp)))))
+3
+
+user=> ((my-last2 MATCH_0) '(con 1 (con 2 (con 3 (emp)))))
+3
+
+user=> (my-last3 '(con 1 (con 2 (con 3 (con 4 (emp))))))
+4
+
+========================================≈
