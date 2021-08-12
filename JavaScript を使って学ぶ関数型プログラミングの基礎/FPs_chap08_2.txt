@@ -1,0 +1,559 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+========================================
+;; ログ出力評価器　その１（P307 - 312）
+========================================
+
+;; 既出の型（関数群？）
+
+(def PAIR
+　{ 'con (fn [left right]
+　　　　　　(fn [pattern] ((pattern 'con) left right)))
+
+　　'right (fn [tuple]
+　　　　　　　(tuple { 'con (fn [left right] right) }))
+
+　　'left (fn [tuple]
+　　　　　　　(tuple { 'con (fn [left right] left) })) })
+
+(def LST
+　{ 'emp (fn [& args]
+　　　　　　(fn [pattern] ((pattern 'emp))))
+
+　　'con (fn [head tail]
+　　　　　　(fn [pattern] ((pattern 'con) head tail)))
+
+　　'append (fn [xs]
+　　　　　　　　(fn [ys]
+　　　　　　　　　(xs
+　　　　　　　　　　{ 'emp (fn [& args] ys)
+　　　　　　　　　　　'con (fn [head tail]
+　　　　　　　　　　　　　　　　((LST 'con)
+　　　　　　　　　　　　　　　　　head
+　　　　　　　　　　　　　　　　　(((LST 'append) tail) ys))) })))
+
+　　;; 変更箇所　「ログ出力評価器」用に書き換えている
+　　'toArray (fn [aThunk]
+　　　　　　　　(letfn [ (toArrayHelper [thunk acc]
+　　　　　　　　　　(thunk
+　　　　　　　　　　　{ 'emp (fn [& args] acc)
+　　　　　　　　　　　　'con (fn [item tailThunk] (toArrayHelper tailThunk (conj acc item))) }))  ]
+　　　　　　　　　(toArrayHelper aThunk [])))
+　})
+
+----------------------------------------
+
+(def ENV
+　{ 'emp (fn [val] nil)
+　　'extend (fn [id val environment]
+　　　　　　　　(fn [queryId]
+　　　　　　　　　(if (= id queryId) val (environment queryId)))) })
+
+;; 変更箇所（ID -> LOG）
+
+;; １．関数「flatMap」ではモナドから値を取り出し、transform を適用する。
+;; ２．LOG モナドのインスタンス（PAIR 型）に変換する。
+;; ３．計算結果を左側に、新しいログを右側に、それぞれインスタンスに格納する。
+
+(def LOG
+　{ 'flatMap (fn [instanceM]
+　　　　　　　　　(fn [transform]
+　　  　　　　　　　(instanceM
+　　　　　　　　　　　{ 'con (fn [val log]
+　　　　　　　　　　　　　　　　(let [newInstance (transform val)]
+
+　　　　　　　　　　　　　　　　　;; 計算結果を左側に、新しいログを右側に、それぞれ格納する
+　　　　　　　　　　　　　　　　　((PAIR 'con)
+　　　　　　　　　　　　　　　　　　((PAIR 'left) newInstance)
+　　　　　　　　　　　　　　　　　　(((LST 'append) log)
+　　　　　　　　　　　　　　　　　　　((PAIR 'right) newInstance))))) })))
+
+　　 'output (fn [val]
+　　　　　　　　((PAIR 'con)
+　　　　　　　　　nil
+　　　　　　　　　((LST 'con) val ((LST 'emp)))))
+
+　　 'unit (fn [val] ((PAIR 'con) val ((LST 'emp))))
+　})
+
+----------------------------------------
+
+;; 処理結果を log に追記する機能を追加したバージョン
+
+(defn evaluate3
+　([anExp] (evaluate3 anExp (ENV 'emp)))
+　([[opr & data] environment]
+　　((opr
+　　　{ ;; 追加
+　　　　'log (fn [anExp]
+　　　　　　　　;; 合成１
+　　　　　　　　(((LOG 'flatMap)
+　　　　　　　　　;; ①
+　　　　　　　　　(evaluate3 (first anExp) environment))
+　　　　　　　　　;; ②
+　　　　　　　　　(fn [val]
+　　　　　　　　　　;; 合成２
+　　　　　　　　　　(((LOG 'flatMap)
+　　　　　　　　　　　;; ③
+　　　　　　　　　　　((LOG 'output) val))
+　　　　　　　　　　　;; ④
+　　　　　　　　　　　(fn [& args]
+　　　　　　　　　　　　((LOG 'unit) val))))))
+
+　　　　;; ここでは数値評価の処理のみ（フルバージョンは「evaluate4」としてる）
+　　　　'num (fn [numericValue]
+　　　　　　　　((LOG 'unit) (first numericValue)))
+
+　　　}) data)))
+
+----------------------------------------
+;; 数値の評価（まえのバージョンとの比較も）
+----------------------------------------
+
+user=> (evaluate2 '(num 2))
+2
+
+
+user=> (evaluate3 '(log (num 2)))
+#object[user$fn__2005$fn__2006 0x50062f00 "user$fn__2005$fn__2006@50062f00"]
+
+;; 可視化するためには、実行結果に pattern を適用しないといけない。
+
+user=> ((evaluate3 '(log (num 2)))  { 'con (fn [val log] { :result val  :log ((LST 'toArray) log) }) })
+{:result 2, :log [2]}
+
+========================================
+
+;; シンプルな数値評価でも、
+;; 辿ってみると処理の流れがビックリするほど入り組んでて、具合が悪くなったほど。
+;; 記念に掲載する（ゲロ吐かないでね）。
+
+((evaluate3 '(log (num 10)))  { 'con (fn [val log] { :result val  :log ((LST 'toArray) log) }) })
+
+----------------------------------------
+
+;; ① -> ①-7
+
+(evaluate3 (first '((num 10))) environment))
+
+----------------------------------------
+
+;; ①-1
+
+((evaluate3 (num 10) (ENV 'emp))　;; [①-2 〜 ①-4]
+　{ 'con (fn [val log]
+　　　　　　(let [newInstance (transform val)]
+　　　　　　　((PAIR 'con)
+　　　　　　　　((PAIR 'left) newInstance)
+　　　　　　　　　(((LST 'append) log)
+　　　　　　　　　　((PAIR 'right) newInstance))))) })
+
+;; ①-2
+
+( (LOG 'unit) (first '(10)) )
+
+;; ①-3
+
+( (fn [val] ((PAIR 'con) val ((LST 'emp)))) 10 )
+
+;; ①-4
+
+( (PAIR 'con) 10 ((LST 'emp)) )
+
+----------------------------------------
+
+;; ①-5 引数「pattern」が確定
+
+( (fn [pattern] ((pattern 'con) 10 (ENV 'emp)))
+　{ 'con (fn [val log]
+　　　　　　(let [newInstance (transform val)]
+　　　　　　　((PAIR 'con)
+　　　　　　　　((PAIR 'left) newInstance)
+　　　　　　　　　(((LST 'append) log)
+　　　　　　　　　　((PAIR 'right) newInstance))))) } )
+
+;; ①-6
+
+( (fn [val log]
+　　　　　　(let [newInstance (transform val)]
+　　　　　　　((PAIR 'con)
+　　　　　　　　((PAIR 'left) newInstance)
+　　　　　　　　　(((LST 'append) log)
+　　　　　　　　　　((PAIR 'right) newInstance))))) 10 (ENV 'emp) )
+
+;; ①-7 [ transform 未定 ] ：transform ②-13 で確定する。
+
+(let [newInstance (transform 10)]
+　((PAIR 'con)
+　　((PAIR 'left) newInstance)
+　　(((LST 'append) (fn [pattern] ((pattern 'emp))))
+　　　((PAIR 'right) newInstance))))
+
+========================================
+
+;; ② [ val 未定 ]
+
+(fn [val]
+　;; 合成２
+　(((LOG 'flatMap)
+　　;; ③
+　　((LOG 'output) val))
+　　;; ④
+　　(fn [& args] ((LOG 'unit) val))))))
+
+----------------------------------------
+
+;; ②-1
+
+(fn [val]
+　;; 合成２
+　(((LOG 'flatMap)
+　　;; ③ : output 適用済み
+　　((PAIR 'con) nil ((LST 'con) val '(emp))))
+　　;; ④
+　　(fn [& args] ((PAIR 'con) val ((LST 'emp))))))
+
+;; ②-2
+
+(fn [val]
+　;; 合成２
+　(((LOG 'flatMap)
+　　;; ③ : output 適用済み、[ pattern 未定 ]
+　　(fn [pattern1] ((pattern1 'con) nil ((LST 'con) val (fn [pattern2] ((pattern2 'emp))))))
+　　;; ④
+　　(fn [& args] (fn [pattern3] ((pattern3 'con) val ((LST 'emp))))))))
+
+;; ②-3
+
+(fn [val]
+　;; 合成２
+　(((LOG 'flatMap)
+　　;; ③ : output 適用済み、[ pattern1 未定 ]
+　　(fn [pattern1] ((pattern1 'con) nil ((LST 'con) val (fn [pattern2] ((pattern2 'emp))))))
+　　;; ④ [ pattern3 未定 ]
+　　(fn [& args] (fn [pattern3] ((pattern3 'con) val ((LST 'emp))))))))
+
+
+;; ②-4
+
+(fn [val]
+　;; 合成２
+　( 　　
+　　;; ③ : output 適用済み、[ pattern1 確定 ]
+　　(fn [pattern1] ((pattern1 'con) nil ((LST 'con) val (fn [pattern2] ((pattern2 'emp))))))
+　　　{ 'con (fn [val2 log2]
+　　　　　　(let [ newInstance2
+　　　　　　　　　　(
+　　　　　　　　　　　;; ④ [ pattern3 未定 ]
+　　　　　　　　　　　(fn [& args] (fn [pattern3] ((pattern3 'con) val ((LST 'emp)))))
+　　　　　　　　　　　val2 ) ]
+
+　　　　　　　　((PAIR 'con)
+　　　　　　　　　((PAIR 'left) newInstance2)
+　　　　　　　　　　(((LST 'append) log2)
+　　　　　　　　　　　((PAIR 'right) newInstance2))))) }))
+
+;; ②-5
+
+(fn [val]
+　;; 合成２
+　(
+　　(fn [val2 log2]
+　　　(let [ newInstance2
+　　　　　　　　　　(
+　　　　　　　　　　　;; ④ [ pattern3 未定 ]
+　　　　　　　　　　　(fn [& args] (fn [pattern3] ((pattern3 'con) val ((LST 'emp)))))
+　　　　　　　　　　　val2 ) ]
+
+　　　　((PAIR 'con)
+　　　　　((PAIR 'left) newInstance2)
+　　　　　(((LST 'append) log2)
+　　　　　　((PAIR 'right) newInstance2)))))
+　　　nil
+　　　((LST 'con) val (fn [pattern2] ((pattern2 'emp))))
+　))
+
+;; ②-6
+
+(fn [val]
+　;; 合成２
+　(let [ newInstance2
+　　　;; ④ [ pattern3 未定 ]
+　　　(fn [pattern3] ((pattern3 'con) val ((LST 'emp)))) ]
+
+　　　((PAIR 'con)
+　　　　((PAIR 'left) newInstance2)
+　　　　(((LST 'append)
+　　　　　;; [ log2 変換済み ]
+　　　　　((LST 'con) val (fn [pattern2] ((pattern2 'emp)))))
+　　　　((PAIR 'right) newInstance2)))))
+
+;; ②-7
+
+(fn [val]
+　;; 合成２
+　(let [ newInstance2 (fn [pattern3] ((pattern3 'con) val ((LST 'emp)))) ]
+
+
+　　　((PAIR 'con)
+　　　　;; [ pattern3 確定 ]
+　　　　(newInstance2 { 'con (fn [left right] left) })
+　　　　(((LST 'append)
+　　　　　(fn [pattern4] ((pattern4 'con) val (fn [pattern2] ((pattern2 'emp))))))
+　　　　;; [ pattern3 確定 ]
+　　　　(newInstance2 { 'con (fn [left right] right) })))))
+
+;; ②-8 append はループする箇所
+
+(fn [val]
+　;; 合成２
+　(fn [pattern5]
+　　((pattern5 'con)
+　　　val
+　　　(((LST 'append)
+　　　　(fn [pattern4] ((pattern4 'con) val (fn [pattern2] ((pattern2 'emp)))))) ;; xs
+　　　　((LST 'emp))))))　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　　;; ys
+
+;; ②-9
+
+(fn [val]
+　;; 合成２
+　(fn [pattern5]
+　　((pattern5 'con)
+　　　val
+
+　　　( (fn [pattern4] ((pattern4 'con) val (fn [pattern2] ((pattern2 'emp))))) ;; xs
+　　　　{ 'emp (fn [& args] ((LST 'emp)))　　　　　　　　　　　　　　　　　　　　　　　 ;; ys
+　　　　　'con (fn [head tail]
+　　　　　　　　　((LST 'con)
+　　　　　　　　　　head
+　　　　　　　　　　(((LST 'append) tail) ((LST 'emp))))) }))))　　　　　　　　　　　 ;; ys
+
+;; ②-10
+
+(fn [val]
+　;; 合成２
+　(fn [pattern5]
+　　((pattern5 'con)
+　　　val
+
+　　　((LST 'con)
+　　　　val
+　　　　(((LST 'append)
+　　　　　(fn [pattern2] ((pattern2 'emp)))　;; xs
+　　　　((LST 'emp))))))))　　　　　　　　　　　;; ys
+
+;; ②-11
+
+(fn [val]
+　;; 合成２
+　(fn [pattern5]
+　　((pattern5 'con)
+　　　val
+
+　　　((LST 'con)
+　　　　val
+　　　　( (fn [pattern2] ((pattern2 'emp)))
+　　　　　{ 'emp (fn [& args] ((LST 'emp)))
+　　　　　　'con (fn [head tail]
+　　　　　　　　　　((LST 'con)
+　　　　　　　　　　　head
+　　　　　　　　　　　(((LST 'append) tail) ((LST 'emp))))) })))))
+
+;; ②-12
+
+(fn [val]
+　;; 合成２
+　(fn [pattern5]
+　　((pattern5 'con)
+　　　val
+　　　((LST 'con)
+　　　　val
+　　　　( (fn [& args] ((LST 'emp)) ))))))
+
+;; ②-13
+
+(fn [val]
+　;; 合成２
+　(fn [pattern5]
+　　((pattern5 'con)
+　　　val
+　　　(fn [pattern7]
+　　　　((pattern7 'con)
+　　　　　val
+　　　　　(fn [pattern6] ((pattern6 'emp))))))))
+
+;; ②-14 [ transform ] に val:10 を適用する。
+
+( (fn [val]
+　;; 合成２
+　(fn [pattern5]
+　　((pattern5 'con)
+　　　val
+　　　(fn [pattern7]
+　　　　((pattern7 'con)
+　　　　　val
+　　　　　(fn [pattern6] ((pattern6 'emp)))))))) 10)
+
+;; ②-15
+
+(fn [pattern5]
+　((pattern5 'con)
+　　10
+　　(fn [pattern7]
+　　　((pattern7 'con)
+　　　　10
+　　　　(fn [pattern6] ((pattern6 'emp)))))))
+
+
+========================================
+
+;; ①-7 と ②-14 [ transform ] を合体させる。
+
+(let [newInstance (transform 10)]
+　((PAIR 'con)
+　　((PAIR 'left) newInstance)　　　　　　　　　　　　　　　;; ⑦-1
+　　(((LST 'append) (fn [pattern] ((pattern 'emp))))
+　　　((PAIR 'right) newInstance))))　　　　　　　　　　　 ;; ⑦-2
+
+
+;; ⑦-1
+
+((fn [pattern5]
+　((pattern5 'con)
+　　10
+　　(fn [pattern7]
+　　　((pattern7 'con)
+　　　　10
+　　　　(fn [pattern6] ((pattern6 'emp)))))))
+
+　{ 'con (fn [left right] left) })
+
+10
+
+----------------------------------------
+
+;; ⑦-2
+
+((fn [pattern5]
+　((pattern5 'con)
+　　10
+　　(fn [pattern7]
+　　　((pattern7 'con)
+　　　　10
+　　　　(fn [pattern6] ((pattern6 'emp)))))))
+
+　{ 'con (fn [left right] right) })
+
+(fn [pattern7]
+　((pattern7 'con)
+　　10
+　　(fn [pattern6] ((pattern6 'emp)))))
+
+----------------------------------------
+
+;; ⑦-3
+
+((PAIR 'con)
+　10
+　( (fn [pattern] ((pattern 'emp)))
+　　{ 'emp (fn [& args] 【⑦-2】)
+　　　'con (fn [head tail]
+　　　　　　　((LST 'con)
+　　　　　　　　head
+　　　　　　　　(((LST 'append) tail) 【⑦-2】))) } )
+
+;; ⑦-4
+
+(fn [pattern]
+　((pattern 'con)
+　　10
+　　(fn [& args] 【⑦-2】)))
+
+;; ⑦-5
+
+(fn [pattern]
+　((pattern 'con)
+　　10
+　　(fn [pattern7]
+　　　((pattern7 'con)
+　　　　10
+　　　　(fn [pattern6] ((pattern6 'emp)))))))
+
+;; ⑦-6
+
+( (fn [pattern]
+　　((pattern 'con)
+
+　　　;; val
+　　　10
+
+　　　;; log
+　　　(fn [pattern7]
+　　　　((pattern7 'con)
+　　　　　10
+　　　　　(fn [pattern6] ((pattern6 'emp)))))))
+
+　{ 'con (fn [val log]
+　　　　　　{ :result val
+　　　　　　　:log ((LST 'toArray) log) }) } )　;; ⑧
+
+========================================
+
+;; ⑧
+
+( (fn [aThunk]
+　　(letfn [ (toArrayHelper [thunk acc]
+　　　(thunk
+　　　　{ 'emp (fn [& args] acc)
+　　　　　'con (fn [item tailThunk] (toArrayHelper tailThunk (conj acc item))) }))  ]
+　　　(toArrayHelper aThunk [])))
+
+　(fn [pattern7]
+　　((pattern7 'con)
+　　　10
+　　　(fn [pattern6] ((pattern6 'emp))))) )
+
+;; ⑧-1　acc:[]
+
+( (fn [pattern7]
+　　((pattern7 'con)
+　　　10
+　　　(fn [pattern6] ((pattern6 'emp)))))
+
+　{ 'emp (fn [& args] acc)
+　　'con (fn [item tailThunk] (toArrayHelper tailThunk (conj acc item))) } )
+
+;; ⑧-2　acc:[]
+
+( (fn [item tailThunk] (toArrayHelper tailThunk (conj acc item)))
+　10
+　(fn [pattern6] ((pattern6 'emp))) )
+
+;; ⑧-3　acc:[10]
+
+(toArrayHelper (fn [pattern6] ((pattern6 'emp))) acc)
+
+;; ⑧-4　acc:[10]
+
+( (fn [pattern6] ((pattern6 'emp)))
+　{ 'emp (fn [& args] acc)
+　　'con (fn [item tailThunk] (toArrayHelper tailThunk (conj acc item))) }))
+
+;; ⑧-5
+
+( (fn [& args] [10]) )
+
+;; ⑧-6
+
+[10]
+
+========================================
+
+;; 終了
+
+{:result 10, :log [10]}
+
+========================================

@@ -1,0 +1,219 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+========================================
+;; ログ出力評価器　その２（P307 - 312）
+========================================
+
+;; let over lambda スタイルで、
+;; 「環境」や、必要なモナドを押し込めてみたけれど、…うーん（長すぎる）。
+
+(let [
+　;; 既出の型
+　PAIR
+　{ 'con (fn [left right]
+　　　　　　(fn [pattern] ((pattern 'con) left right)))
+
+　　'right (fn [tuple]
+　　　　　　　(tuple { 'con (fn [left right] right) }))
+
+　　'left (fn [tuple]
+　　　　　　　(tuple { 'con (fn [left right] left) })) }
+
+　LST
+　{ 'emp (fn [& args]
+　　　　　　(fn [pattern] ((pattern 'emp))))
+
+　　'con (fn [head tail]
+　　　　　　(fn [pattern] ((pattern 'con) head tail)))
+
+　　'append (fn [xs]
+　　　　　　　　(fn [ys]
+　　　　　　　　　(xs
+　　　　　　　　　　{ 'emp (fn [& args] ys)
+　　　　　　　　　　　'con (fn [head tail]
+　　　　　　　　　　　　　　　　((LST 'con)
+　　　　　　　　　　　　　　　　　head
+　　　　　　　　　　　　　　　　　(((LST 'append) tail) ys))) })))
+　}
+
+　;;----------------------------------------
+
+　ENV
+　{ 'emp (fn [val] nil)
+　　'extend (fn [id val environment]
+　　　　　　　　(fn [queryId]
+　　　　　　　　　(if (= id queryId) val (environment queryId)))) }
+
+　LOG
+　{ 'flatMap (fn [instanceM]
+　　　　　　　　　(fn [transform]
+　　  　　　　　　　(instanceM
+　　　　　　　　　　　{ 'con (fn [val log]
+　　　　　　　　　　　　　　　　(let [newInstance (transform val)]
+　　　　　　　　　　　　　　　　　((PAIR 'con)
+　　　　　　　　　　　　　　　　　　((PAIR 'left) newInstance)
+　　　　　　　　　　　　　　　　　　(((LST 'append) log)
+　　　　　　　　　　　　　　　　　　　((PAIR 'right) newInstance))))) })))
+
+　　 'output (fn [val]
+　　　　　　　　((PAIR 'con)
+　　　　　　　　　nil
+　　　　　　　　　((LST 'con) val ((LST 'emp)))))
+
+　　 'unit (fn [val] ((PAIR 'con) val ((LST 'emp))))
+　} ]
+
+　(defn evaluate4
+　　([anExp] (evaluate4 anExp (ENV 'emp)))
+　　([[opr & data] environment]
+　　　((opr
+　　　　{ ;; 追加
+　　　　　'log (fn [anExp]
+　　　　　　　　　;; 合成１
+　　　　　　　　　(((LOG 'flatMap)
+　　　　　　　　　　;; ①
+　　　　　　　　　　(evaluate4 (first anExp) environment))
+　　　　　　　　　　;; ②
+　　　　　　　　　　(fn [val]
+　　　　　　　　　　　;; 合成２
+　　　　　　　　　　　(((LOG 'flatMap)
+　　　　　　　　　　　　;; ③
+　　　　　　　　　　　　((LOG 'output) val))
+　　　　　　　　　　　　;; ④
+　　　　　　　　　　　　(fn [& args]
+　　　　　　　　　　　　　((LOG 'unit) val))))))
+
+　　　　　'num (fn [numericValue]
+　　　　　　　　　((LOG 'unit) (first numericValue)))
+
+　　　　　'add (fn [[expL & expR]]
+　　　　　　　　　(((LOG 'flatMap)
+　　　　　　　　　　(evaluate4 expL environment))
+　　　　　　　　　　(fn [valueL]
+　　　　　　　　　　　(((LOG 'flatMap)
+　　　　　　　　　　　　(evaluate4 (first expR) environment))
+　　　　　　　　　　　　(fn [valueR]
+　　　　　　　　　　　　　((LOG 'unit) (+ valueL valueR)))))))
+
+　　　　　'variable (fn [name]
+　　　　　　　　　　　　((LOG 'unit) (environment (first name))))
+
+　　　　　'app (fn [[lambda & arg]]
+　　　　　　　　　(((LOG 'flatMap)
+　　　　　　　　　　(evaluate4 lambda environment))
+　　　　　　　　　　(fn [closure]
+　　　　　　　　　　　(((LOG 'flatMap)
+　　　　　　　　　　　　(evaluate4 (first arg) environment))
+　　　　　　　　　　　　(fn [actualArg]
+　　　　　　　　　　　　　(closure actualArg))))))
+
+　　　　　'lambda (fn [[[opr2 & data2] & body]]
+　　　　　　　　　　　((opr2
+　　　　　　　　　　　　{ 'variable (fn [name]
+　　　　　　　　　　　　　　　　　　　　((LOG 'unit)
+　　　　　　　　　　　　　　　　　　　　　(fn [actualArg]
+　　　　　　　　　　　　　　　　　　　　　　(evaluate4
+　　　　　　　　　　　　　　　　　　　　　　　(first body)
+　　　　　　　　　　　　　　　　　　　　　　　((ENV 'extend) (first name) actualArg environment)))))
+　　　　　　　　　　　　}) data2))
+
+　　　}) data))))
+
+----------------------------------------
+
+;; 「ログ出力」用
+(defn toArray [aThunk]
+　(letfn [ (toArrayHelper [thunk acc]
+　　　　　　　(thunk
+　　　　　　　　{ 'emp (fn [& args] acc)
+　　　　　　　　　'con (fn [item tailThunk] (toArrayHelper tailThunk (conj acc item))) }))  ]
+　　(toArrayHelper aThunk [])))
+
+;; テスト用
+(defn my-test [fnc val]
+　((fnc val)
+　　{ 'con (fn [val log]
+　　　　　　　{ :result val  :log (toArray log) }) }))
+
+----------------------------------------
+;; 数値の評価（その２）
+----------------------------------------
+
+user=> (my-test evaluate4 '(log (num 10)))
+{:result 10, :log [10]}
+
+
+----------------------------------------
+;; 変数の評価（その２）
+----------------------------------------
+
+(def newEnv2 #(if (= "a2" %) 100 nil))
+
+(defn createEnv [name val] #(if (= name %) val nil))
+
+
+user=> ((evaluate4
+　'(log (variable "a2")) newEnv2)
+　{ 'con (fn [val log] { :result val  :log (toArray log) }) })
+  #_=>   #_=> {:result 100, :log [100]}
+
+
+user=> ((evaluate4
+　'(log (variable "a3")) (createEnv "a3" 200))
+　{ 'con (fn [val log] { :result val  :log (toArray log) }) })
+  #_=>   #_=> {:result 200, :log [200]}
+
+user=> ((evaluate4
+　'(log (variable "a3")) (createEnv "a4" 200))
+　{ 'con (fn [val log] { :result val  :log (toArray log) }) })
+  #_=>   #_=> {:result nil, :log [nil]}
+
+
+----------------------------------------
+;; 足し算の評価（その２）
+----------------------------------------
+
+;; 評価される値の順番によって、log が変わっていることを確認。
+
+user=> (my-test evaluate4 '(log (add (log (num 1)) (log (num 2)))))
+{:result 3, :log [1 2 3]}
+
+user=> (my-test evaluate4 '(log (add (log (num 2)) (log (num 1)))))
+{:result 3, :log [2 1 3]}
+
+
+----------------------------------------
+;; 関数の評価（その２）
+----------------------------------------
+
+(def expr3-2
+　'(log (app
+　　(lambda (variable "n")
+　　　(add (variable "n") (log (num 10))))
+　　(log (num 20)))))
+
+
+(def expr4-2
+　'(app
+　　(app
+　　　(lambda (variable "n")
+　　　　(lambda (variable "m")
+　　　　　(add
+　　　　　　(variable "n")
+　　　　　　(variable "m"))))
+　　　　　;; arg:m
+　　　　　(num 100))
+　　　　;; arg:n
+　　　　(num 200)))
+
+
+user=> (my-test evaluate4 expr3-2)
+{:result 30, :log [20 10 30]}
+
+user=> (my-test evaluate4 expr4-2)
+{:result 300, :log []}
+
+
+========================================

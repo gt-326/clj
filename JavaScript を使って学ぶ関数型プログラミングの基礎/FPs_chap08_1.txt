@@ -1,0 +1,352 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+========================================
+;; 抽象構文木を作る（P293 - 295）
+========================================
+
+(def ENV
+　{ 'emp (fn [val] nil)
+　　'lookup (fn [name environment] (environment name))
+　　'extend (fn [id val environment]
+　　　　　　　　(fn [queryId]
+　　　　　　　　　(if (= id queryId)
+　　　　　　　　　　val
+　　　　　　　　　　((ENV 'lookup) queryId environment))))
+　})
+
+----------------------------------------
+
+;; 変数「a」に値を束縛し、その束縛された値を取得する
+
+user=> (def newEnv ((ENV 'extend) "a" 1 (ENV 'emp)))
+#'user/newEnv
+
+user=> ((ENV 'lookup) "a" newEnv)
+1
+
+user=> ((ENV 'lookup) "b" newEnv)
+nil
+
+
+;; わざわざ「(ENV 'extend)」する必要なさそう。そして簡潔っ！
+
+user=> (newEnv "a")
+1
+
+
+========================================
+;; 環境を作る（P297 - 299）
+========================================
+
+(def initEnv (ENV 'emp))
+
+;; initEnv に 変数「x」を追加
+
+(def envIncludeX ((ENV 'extend) "x" 1 initEnv))
+
+;; envIncludeX に 変数「y」を追加
+
+(def envIncludeX&Y ((ENV 'extend) "y" 2 envIncludeX))
+
+----------------------------------------
+
+user=> (+
+　((ENV 'lookup) "x" envIncludeX&Y)
+　((ENV 'lookup) "y" envIncludeX&Y))
+  #_=>   #_=> 3
+
+;; やっぱり、こんなふうに簡潔に書ける。
+
+user=> (+ (envIncludeX&Y "x") (envIncludeX&Y "y"))
+3
+
+
+========================================
+;; 評価器を作る（P299 - 275）
+========================================
+
+;; 恒等モナド
+
+(def ID
+　{ 'unit (fn [val] val)
+　　'flatMap (fn [instanceM]
+　　　　　　　　　(fn [transform]
+　　　　　　　　　　(transform instanceM))) })
+
+(def exp
+　{ 'num (fn [val] (fn [pattern] ((pattern 'num) val)))
+　　'val (fn [name] (fn [pattern] ((pattern 'val) name)))
+　　'lambda (fn [val body] (fn [pattern] ((pattern 'lambda) val body)))
+　　'app (fn [lambda arg] (fn [pattern] ((pattern 'app) lambda arg)))
+　　'add (fn [expL expR] (fn [pattern] ((pattern 'add) expL expR)))
+
+　　'variable (fn [name] (fn [pattern] ((pattern 'variable) name)))
+　})
+
+(def evaluate
+　(fn [anExp environment]
+　　(anExp
+　　　{ 'num (fn [numericValue]
+　　　　　　　　((ID 'unit) numericValue))
+　　　　'variable (fn [name]
+　　　　　　　　　　　((ID 'unit) ((ENV 'lookup) name environment)))
+
+　　　　'add (fn [expL expR]
+　　　　　　　　(((ID 'flatMap)
+　　　　　　　　　(evaluate expL environment))
+　　　　　　　　　(fn [valueL]
+　　　　　　　　　　(((ID 'flatMap)
+　　　　　　　　　　　(evaluate expR environment))
+　　　　　　　　　　　(fn [valueR]
+　　　　　　　　　　　　((ID 'unit) (+ valueL valueR)))))))
+
+　　　　'app (fn [lambda arg]
+　　　　　　　　(((ID 'flatMap)
+　　　　　　　　　(evaluate lambda environment))
+　　　　　　　　　　(fn [closure]
+　　　　　　　　　　　(((ID 'flatMap)
+　　　　　　　　　　　　(evaluate arg environment))
+　　　　　　　　　　　　(fn [actualArg]
+　　　　　　　　　　　　　(closure actualArg))))))
+
+　　　　'lambda (fn [variable body]
+　　　　　　　　　　(variable
+　　　　　　　　　　　{ 'variable (fn [name]
+　　　　　　　　　　　　　　　　　　　((ID 'unit)
+　　　　　　　　　　　　　　　　　　　　(fn [actualArg]
+　　　　　　　　　　　　　　　　　　　　　(evaluate
+　　　　　　　　　　　　　　　　　　　　　　body
+　　　　　　　　　　　　　　　　　　　　　　((ENV 'extend) name actualArg environment)))))
+　　　　　　　　　　　}))
+　　})))
+
+
+----------------------------------------
+;; 数値の評価
+----------------------------------------
+
+user=> (evaluate ((EXP 'num) 2) (ENV 'emp))
+2
+
+
+----------------------------------------
+;; 変数の評価
+----------------------------------------
+
+user=> (def newEnv ((ENV 'extend) "a" 1 (ENV 'emp)))
+#'user/newEnv
+
+user=> (evaluate ((EXP 'variable) "x") newEnv)
+1
+
+user=> (evaluate ((EXP 'variable) "x") newEnv)
+nil
+
+
+----------------------------------------
+;; 足し算の評価
+----------------------------------------
+
+user=> (def addition ((EXP 'add) ((EXP 'num) 1) ((EXP 'num) 2)))
+#'user/addition
+
+user=> (evaluate addition (ENV 'emp))
+3
+
+
+----------------------------------------
+;; 関数の評価
+----------------------------------------
+
+user=> (def expr
+　((EXP 'app)
+　　;; lambda
+　　((EXP 'lambda)
+　　　((EXP 'variable) "n")
+　　　((EXP 'add)
+　　　　((EXP 'variable) "n")
+　　　　((EXP 'num) 10)))
+
+　　;; arg
+　　((EXP 'num) 20)))
+
+user=>  (evaluate expr (ENV 'emp))
+30
+
+
+----------------------------------------
+;; 関数の評価（その２：カリー化関数）
+----------------------------------------
+
+user=> (def expr2
+　((EXP 'app)
+　　((EXP 'app)
+　　　;; lambda1
+　　　((EXP 'lambda)
+　　　　((EXP 'variable) "n")
+
+　　　　;; lambda2
+　　　　((EXP 'lambda)
+　　　　　((EXP 'variable) "m")
+
+　　　　　　((EXP 'add)
+　　　　　　　((EXP 'variable) "n")
+　　　　　　　((EXP 'variable) "m"))))
+
+　　　　　;; arg:m
+　　　　　((EXP 'num) 100))
+　　　　;; arg:n
+　　　　((EXP 'num) 200)))
+
+user=>  (evaluate expr2 (ENV 'emp))
+300
+
+
+========================================
+;; 評価器を作る（その２）
+========================================
+
+;; １．変数「exp」って冗長だな、と。削除した。
+;; ２．変数「env」、「ID」は、グローバル変数になっていて関数型プログラミングのスタイルに反する。
+;; 　　関数「evaluate」を let over lambda スタイルで書き直した。
+;; ３．関数「evaluate」を呼び出すたびに、「環境」（引数「environment」、値「(ENV 'emp)など」）を渡すのも面倒。
+;; ４．(emp 'lookup) の関数呼び出しって冗長だな、と。
+
+
+(let [ ENV
+　{ 'emp (fn [val] nil)
+
+;; 呼び出し時の引数の位置を前後に置き換えているだけなら、
+;; わざわざ呼び出さなくてもいいかな、と。
+;; 'lookup (fn [name environment] (environment name))
+
+　　'extend (fn [id val environment]
+　　　　　　　　(fn [queryId]
+　　　　　　　　　(if (= id queryId) val (environment queryId)))) }
+
+　ID
+　{ 'unit (fn [val] val)
+　　'flatMap (fn [instanceM]
+　　　　　　　　　(fn [transform]
+　　  　　　　　　　　(transform instanceM))) } ]
+
+　(defn evaluate2
+　　([anExp] (evaluate2 anExp (ENV 'emp)))
+　　([[opr & data] environment]
+　　　((opr
+　　　{ 'num (fn [numericValue]
+　　　　　　　　((ID 'unit) (first numericValue)))
+
+　　　　'variable (fn [name]
+
+　　　　　　　　　　　;; わざわざ呼び出さなくてもいいかな、と。
+　　　　　　　　　　　;; ((ID 'unit) ((ENV 'lookup) (first name) environment)))
+　　　　　　　　　　　((ID 'unit) (environment (first name))))
+
+　　　　'add (fn [[expL & expR]]
+　　　　　　　　(((ID 'flatMap)
+　　　　　　　　　(evaluate2 expL environment))
+　　　　　　　　　(fn [valueL]
+　　　　　　　　　　(((ID 'flatMap)
+　　　　　　　　　　　(evaluate2 (first expR) environment))
+　　　　　　　　　　　(fn [valueR]
+　　　　　　　　　　　　((ID 'unit) (+ valueL valueR)))))))
+
+　　　　'app (fn [[lambda & arg]]
+　　　　　　　　(((ID 'flatMap)
+　　　　　　　　　(evaluate2 lambda environment))
+　　　　　　　　　(fn [closure]
+　　　　　　　　　　(((ID 'flatMap)
+　　　　　　　　　　　(evaluate2 (first arg) environment))
+　　　　　　　　　　　(fn [actualArg]
+　　　　　　　　　　　　(closure actualArg))))))
+
+　　　　'lambda (fn [[[opr2 & data2] & body]]
+　　　　　　　　　　((opr2
+　　　　　　　　　　　{ 'variable (fn [name]
+　　　　　　　　　　　　　　　　　　　((ID 'unit)
+　　　　　　　　　　　　　　　　　　　　(fn [actualArg]
+　　　　　　　　　　　　　　　　　　　　　(evaluate2
+　　　　　　　　　　　　　　　　　　　　　　(first body)
+　　　　　　　　　　　　　　　　　　　　　　((ENV 'extend) (first name) actualArg environment)))))
+　　　　　　　　　　　}) data2))
+　　　}) data))))
+
+
+----------------------------------------
+;; 数値の評価
+----------------------------------------
+
+user=> (evaluate2 '(num 2))
+2
+
+
+----------------------------------------
+;; 変数の評価
+----------------------------------------
+
+;; 変数「env」を let over lambda に置き直したので、これを実行するとエラーになる。
+;;(def newEnv ((ENV 'extend) "a2" 100 (ENV 'emp)))
+
+(def newEnv2 #(if (= "a2" %) 100 nil))
+
+user=> (evaluate2 '(variable "a2") newEnv2)
+100
+
+
+;; 補助関数「createEnv」を定義してみる。
+
+(defn createEnv [name val]
+　#(if (= name %) val nil))
+
+user=> (evaluate2 '(variable "a3") (createEnv "a3" 200))
+200
+
+user=> (evaluate2 '(variable "a4") (createEnv "a3" 200))
+nil
+
+
+----------------------------------------
+;; 足し算の評価
+----------------------------------------
+
+(def addition2 '(add (num 1) (num 2)))
+
+user=> (evaluate2 addition2)
+3
+
+
+----------------------------------------
+;; 関数の評価
+----------------------------------------
+
+(def expr3
+　'(app
+　　(lambda (variable "n")
+　　　(add (variable "n") (num 10)))
+　　(num 20)))
+
+(def expr4
+　'(app
+　　(app
+　　　(lambda (variable "n")
+　　　　(lambda (variable "m")
+　　　　　(add
+　　　　　　(variable "n")
+　　　　　　(variable "m"))))
+　　　　　;; arg:m
+　　　　　(num 100))
+　　　　;; arg:n
+　　　　(num 200)))
+
+
+user=> (evaluate2 expr3)
+30
+
+user=> (evaluate2 expr4)
+300
+
+
+========================================
