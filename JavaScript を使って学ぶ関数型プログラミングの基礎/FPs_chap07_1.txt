@@ -3,319 +3,365 @@
 ;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
 
 ========================================
-;; 継続による反復処理からの脱出（P251 - 260）
+;; カリー化で関数を返す（P194 - 200）
 ========================================
 
-(def my-identity
-　(fn [any] any))
+;; 非カリー化スタイル（多項関数）
 
-;; 「成功継続」：反復処理を脱出する
-
-(def continuesOnSuccess my-identity)
-
-;; 「失敗継続」：反復処理を続ける
-
-(def continuesOnFailure
-　(fn [ aStream
-　　　　 pred
-    　  escapesFromRecursion
-   　   continuesOnRecursion ]
-   (FIND
-   　aStream
-   　pred
-   　escapesFromRecursion
-   　continuesOnRecursion)))
-
-;; ストリーム（aStream）から、条件（pred）に合致する値を探し続ける
-
-(def FIND
-　(fn [ aStream
-　　　　　pred
-　　　　　continuesOnSuccess
-　　　　　continuesOnFailure ]
-　　　　　(MATCH
-　　　　　　aStream
-　　　　　　{ 'emp (fn [] continuesOnSuccess)
-　　　　　　　'con (fn [[head & tailThunk]]
-　　　　　　　　　　　　(if (pred head)
-　　　　　　　　　　　　　(continuesOnSuccess head)
-　　　　　　　　　　　　　(continuesOnFailure
-　　　　　　　　　　　　　　((first tailThunk))
-　　　　　　　　　　　　　　pred
-　　　　　　　　　　　　　　continuesOnSuccess
-　　　　　　　　　　　　　　continuesOnFailure))) })))
-
-;; MATCH を使わないバージョン
-
-(def FIND2
-　(fn [ [opr & data]
-　　　　　pred
-　　　　　continuesOnSuccess
-　　　　　continuesOnFailure ]
-　　　　　((opr
-　　　　　　{ 'emp (fn [] continuesOnSuccess)
-　　　　　　　'con (fn [[head & tailThunk]]
-　　　　　　　　　　　　(if (pred head)
-　　　　　　　　　　　　　(continuesOnSuccess head)
-　　　　　　　　　　　　　(continuesOnFailure
-　　　　　　　　　　　　　　((first tailThunk))
-　　　　　　　　　　　　　　pred
-　　　　　　　　　　　　　　continuesOnSuccess
-　　　　　　　　　　　　　　continuesOnFailure))) })
-　　　　　　data)))
-
-(def continuesOnFailure2
-　(fn [ aStream
-　　　　 pred
-    　  escapesFromRecursion
-   　   continuesOnRecursion ]
-   (FIND2
-   　aStream
-   　pred
-   　escapesFromRecursion
-   　continuesOnRecursion)))
-
-----------------------------------------
-
-;; データ（正、負数の無限のストリーム）
-
-(def pos (enumFrom inc 1))
-(def neg (enumFrom dec -1))
-
-----------------------------------------
-
-;; 条件が満たされたときに反復処理を抜ける
-
-user=> (FIND pos #(= 100 %) continuesOnSuccess continuesOnFailure)
-100
-
-user=> (FIND neg #(= -100 %) continuesOnSuccess continuesOnFailure)
--100
+(def multipleOf
+　(fn [n m] (= 0 (rem m n))))
 
 
-;; 数が大きかったり、条件が満たされたときにはスタックを食いつぶす
+user=> (multipleOf 2 5)
+false
 
-user=> (FIND pos #(= 1237 %) continuesOnSuccess continuesOnFailure)
-Execution error (StackOverflowError) at user/enumFrom (REPL:2).
-null
-
-user=> (FIND neg #(= 1 %) continuesOnSuccess continuesOnFailure)
-Execution error (StackOverflowError) at user/MATCH (REPL:2).
-null
+user=> (multipleOf 2 4)
+true
 
 
-;; MATCH を使わないバージョン
+;; カリー化（高階関数化）
 
-user=> (FIND2 pos #(= 100 %) continuesOnSuccess continuesOnFailure2)
-100
+(def multipleOfCurried
+　(fn [n]
+　　(fn [m] (= 0 (rem m n)))))
 
-user=> (FIND2 neg #(= -100 %) continuesOnSuccess continuesOnFailure2)
--100
 
-≈
-========================================
-;; 非決定性計算機を作る（P260 - 268）
-========================================
+user=> ((multipleOfCurried 2) 5)
+false
 
-;; まずは、決定計算機を作る
+user=> ((multipleOfCurried 2) 4)
+true
 
-(def MATCH
-　(fn [[opr & data] pattern] ((pattern opr) data)))
+user=> (multipleOfCurried 2)
+#object[user$multipleOfCurried$fn__2033 0x9918444 "user$multipleOfCurried$fn__2033@9918444"]
 
-(def CALC
-　(fn [anExp]
-　　(MATCH
-　　　anExp
-　　　{ 'num (fn [n] (first n))
-       'add (fn [[exp1 & exp2]]
-       　　　   (+ (CALC exp1)
-                  (CALC (first exp2)))) })))
+user=> (def evenp? (multipleOfCurried 2))
+#'user/evenp?
 
-;; MATCH を使わないバージョン
+user=> (evenp? 5)
+false
 
-(def CALC2
-　(fn [[opr & data]]
-　　((opr
-　　　{ 'num (fn [n] (first n))
-       'add (fn [[exp1 & exp2]]
-       　　　   (+ (CALC2 exp1)
-                  (CALC2 (first exp2)))) })
-　　　data)))
+user=> (evenp? 4)
+true
 
-;; 可変長バージョン
 
-(def CALC3
-　(fn [[opr & data]]
-　　((opr
-　　　{ 'num (fn [n] (first n))
-       'add (fn [alist]
-       　　　　(apply + (map #(CALC3 %) alist))) })
-　　　data)))
+;; べき乗計算をする高階関数（再帰版）
 
-----------------------------------------
+(def exponential
+　(fn [base]
+　　(fn [idx]
+　　　(if (= 0 idx)
+　　　　1
+　　　　(* base ((exponential base) (dec idx)))))))
 
-;; 擬似 LISP コードを評価する
+;; べき乗計算をする高階関数（loop/recur 版）
 
-user=> (CALC '(num 1))
+(def exponential2
+　(fn [base]
+　　(fn [idx]
+　　　(loop [i idx acc 1]
+　　　　(if (zero? i)
+　　　　　acc
+　　　　　(recur (dec i) (* acc base)))))))
+
+
+;; 2 を 3 乗倍する
+
+user=> ((exponential 2) 3)
+8
+
+;; fnc に適用する引数（x、y）の順序を入れ替える高階関数
+
+(def flip
+　(fn [fnc]
+　　(fn [x]
+　　　(fn [y]
+　　　　((fnc y) x)))))
+
+
+;; 2 乗倍する関数を返す関数を定義する
+
+(def square ((flip exponential) 2))
+
+;; 3 乗倍する関数を返す関数を定義する
+
+(def cube ((flip exponential) 3))
+
+user=> (square 4)
+16
+
+user=> (cube 4)
+64
+
+
+;; init に、関数 fnc を cnt 回適用する関数（チャーチ数生成）
+
+(def genChurchNums
+　(fn [cnt]
+　　(fn [fnc]
+　　　(fn [init]
+　　　　(loop [i cnt acc init]
+　　　　　(if (zero? i)
+　　　　　　acc
+　　　　　　(recur (dec i) (fnc acc))))))))
+
+(def zero (genChurchNums 0))
+
+(def one (genChurchNums 1))
+
+(def two (genChurchNums 2))
+
+(def three (genChurchNums 3))
+
+
+user=> ((three dec) 0)
+-3
+
+user=> ((three (fn [n] (* n 10))) 1)
+1000
+
+user=> ((zero #(* % 10)) 1)
 1
 
-user=> (CALC '(add (num 1) (num 2)))
+
+========================================
+;; コンビネータで関数を組み合わせる（P201 - 213）
+========================================
+
+;; 関数を生成する
+
+(def evenp
+　(fn [n]
+　　(= 0 (rem n 2))))
+
+(def !
+　(fn [pred]
+　　(fn [arg]
+　　　(not (pred arg)))))
+
+
+;; ! を用いて evenp と反対の挙動をする oddp を作成する
+
+(def oddp (! evenp))
+
+
+user=> (oddp 3)
+true
+
+
+;; 関数を合成する（※あえて compose をカリー化する必要はない）
+
+(def compose
+　(fn [f g]
+　　(fn [arg]
+　　　(f (g arg)))))
+
+(def fnc1
+　(fn [x] (+ (* x x) 1)))
+
+(def fnc2
+　(fn [x] (- x 2)))
+
+
+user=> ((compose fnc1 fnc2) 10)
+65
+
+user=> (fnc1 (fnc2 10))
+65
+
+
+;; 関数を適用する順序によって、結果が変わってしまう。
+
+user=> ((compose fnc2 fnc1) 10)
+99
+
+
+;; 関数合成の条件
+
+(def opposite
+　(fn [x] (- x)))
+
+(def addCurried
+　(fn [x]
+　　(fn [y] (+ x y))))
+
+(def compose2
+　(fn [f g]
+　　(fn [& arg]
+　　　(f (g arg)))))
+
+(def add
+　(fn [[x y]] (+ x y)))
+
+
+user=> ((compose opposite (addCurried 2)) 3)
+-5
+
+user=> ((compose2 opposite add) 2 3)
+-5
+
+
+;; 関数合成による抽象化
+
+;; …をおこなうまえに同じ機能の関数を作る。
+;; （[ FPs_chap05_1.txt ]で実装済みのやつを引っぱってきただけ、なのだけど）。
+
+;; 補助関数
+
+(defn lst [[opr & data]]
+　(opr
+　　{ 'emp (fn [pattern] (pattern 'emp))
+　　　'con (fn [pattern] ((pattern 'con) data)) }))
+
+;; 機能本体
+
+(def my-last
+　(fn [alist]
+　　((lst alist)
+　　　{ 'emp nil
+　　　　'con (fn [[head tail]]
+　　　　　　　　((lst tail)
+　　　　　　　　　{ 'emp head
+　　　　　　　　　　'con (fn [& _] (my-last tail)) })) })))
+
+
+;; リストの最後の要素を取得する。
+
+user=> (my-last '(con 1 (con 2 (con 3 (emp)))))
+3
+　
+
+;; 合成する部品
+
+(def head
+　(fn [[opr & data]]
+　　((opr
+　　　{ 'emp (fn [& _] nil)
+　　　　'con (fn [[h t]] h) })
+　　　data)))
+
+(def rev
+　(fn [alist]
+　　(letfn [(rev-helper [[opr & data] acc]
+　　　((opr
+　　　　{ 'emp (fn [& _] acc)
+　　　　　'con (fn [[h t]] (rev-helper t (list 'con h acc))) })
+　　　　data))]
+　　　(rev-helper alist '(emp)))))
+
+
+;; 部品1：先頭の要素を取得する関数の挙動
+
+user=> (head '(con 1 (con 2 (con 3 (emp)))))
+1
+
+;; 部品２：リストの並びを逆順にする
+
+user=> (rev '(con 1 (con 2 (con 3 (emp)))))
+(con 3 (con 2 (con 1 (emp))))
+
+
+;; 「部品１」、「２」の関数を合成し、
+;; 抽象化によりリストの最後の要素を取得する「my-last」と同等の機能を実現している。
+
+user=> ((compose head rev) '(con 1 (con 2 (con 3 (emp)))))
 3
 
 
-user=> (CALC2 '(add (num 3) (num 4)))
-7
-
-
-user=> (CALC3 '(add (num 1) (num 2) (num 3)))
-6
-
-user=> (CALC3 '(add (num 1) (num 2) (add (num 3) (num 4))))
-10
-
-
 ========================================
-;; 非決定性計算機を作る（「継続」の感触）
+;; Y コンビネーター（P212 - 213）
 ========================================
 
-(def MATCH
-　(fn [[opr & data] pattern] ((pattern opr) data)))
+(def YC
+　(fn [F]
+　　((fn [x] (x x))
+　　　(fn [y]
+　　　　(F
+　　　　　(fn [z] ((y y) z)))))))
 
-(def CALC4
-　(fn [anExp
-       continuesOnFailure
-　　　　continuesOnSuccess]
-　　(MATCH
-　　　anExp
-　　　{ 'num (fn [n] (continuesOnSuccess (first n) continuesOnFailure))
-　　    'add (fn [[x & y]]
-             ;; まず 引数x を評価する
-　　　　　　　　(CALC4 x
-　　　　　　　　　;; x の計算に失敗すれば、おおもとの失敗継続を渡す
-　　　　　　　　　continuesOnFailure
+(def factorial
+　(YC
+　　(fn [fact]
+　　　(fn [n]
+　　　　(if (= n 1)
+　　　　　1
+　　　　　(* n (fact (dec n))))))))
 
-　　　　　　　　　(fn [resultX continuesOnFailureX]
-　　             ;; つぎに 引数y を評価する
-　　　　　　　　　　(CALC4 (first y)
 
-　　　　　　　　　　　;; y の計算に失敗すれば、x の失敗継続を渡す
-　　　　　　　　　　　continuesOnFailureX
+;; 階乗計算：[ 4 * 3 * 2 * 1 = ? ]
 
-　　　　　　　　　　　(fn [resultY continuesOnFailureY]
-　　　　　　　　　　　　;; 引数x と y がともに成功すれば、両者の値で足し算を計算する
-　　　　　　　　　　　　(continuesOnSuccess (list '+ resultX resultY) continuesOnFailureY))))))
-
-　　　　　;; 「曖昧な（"ambiguous"）」
-　　　　　'amb (fn [choices]
-　　　　　　　　　(letfn[ (calcAmb [choices]
-　　　　　　　　　　(MATCH
-　　　　　　　　　　　(first choices)
-　　　　　　　　　　　{ 'emp (fn [& args] (continuesOnFailure))
-　　　　　　　　　　　　'con (fn [[head & tail]]
-　　　　　　　　　　　　　　　　(CALC4
-　　　　　　　　　　　　　　　　　head
-　　　　　　　　　　　　　　　　　(fn [& args] (calcAmb tail))
-　　　　　　　　　　　　　　　　　continuesOnSuccess)) })) ]
-
-　　　　　　　　　　(calcAmb choices)))
-　})))
-
-;; MATCH を使わないバージョン
-
-(def CALC4-2
-　(fn [[opr & data]
-       continuesOnFailure
-　　　　continuesOnSuccess]
-　　((opr
-　　　{ 'num (fn [n] (continuesOnSuccess (first n) continuesOnFailure))
-　　    'add (fn [[x & y]]
-             ;; まず 引数x を評価する
-　　　　　　　　(CALC4-2 x
-　　　　　　　　　;; x の計算に失敗すれば、おおもとの失敗継続を渡す
-　　　　　　　　　continuesOnFailure
-
-　　　　　　　　　(fn [resultX continuesOnFailureX]
-　　             ;; つぎに 引数y を評価する
-　　　　　　　　　　(CALC4-2 (first y)
-
-　　　　　　　　　　　;; y の計算に失敗すれば、x の失敗継続を渡す
-　　　　　　　　　　　continuesOnFailureX
-
-　　　　　　　　　　　(fn [resultY continuesOnFailureY]
-　　　　　　　　　　　　;; 引数x と y がともに成功すれば、両者の値で足し算を計算する
-　　　　　　　　　　　　(continuesOnSuccess (list '+ resultX resultY) continuesOnFailureY))))))
-
-　　　　　;; 「曖昧な（"ambiguous"）」
-　　　　　'amb (fn [choices]
-　　　　　　　　　(letfn[ (calcAmb [choices]
-　　　　　　　　　　(((first (first choices))
-　　　　　　　　　　　{ 'emp (fn [& args] (continuesOnFailure))
-　　　　　　　　　　　　'con (fn [[head & tail]]
-　　　　　　　　　　　　　　　　(CALC4-2
-　　　　　　　　　　　　　　　　　head
-　　　　　　　　　　　　　　　　　(fn [& args] (calcAmb tail))
-　　　　　　　　　　　　　　　　　continuesOnSuccess)) })
-　　　　　　　　　　　(rest (first choices)))) ]
-
-　　　　　　　　　　(calcAmb choices)))
-　　}) data)))
-
-;; 非決定計算機の駆動関数
-
-(defn driver [expr]
-　(let [ suspendedComputation (atom nil)
-　　　　　continuesOnFailure (fn [] "fin!")
-　　　　　continuesOnSuccess (fn [anyVal continuesOnFail]
-　　　　　　(do
-　　　　　　　;; 状態を更新する
-　　　　　　　(reset! suspendedComputation continuesOnFail)
-　　　　　　　;; 計算式の組み合わせと、その計算結果を対にした値
-　　　　　　　[anyVal (eval anyVal)])) ]
-　　(fn []
-　　　(if (nil? @suspendedComputation)
-　　　　(CALC4-2 expr continuesOnFailure continuesOnSuccess)
-　　　　(@suspendedComputation)))))
+user=> (factorial 5)
+120
 
 ----------------------------------------
 
-;; データ（擬似 LISP コード）
+(YC F)
+= (F (YC F))
 
-(def ambExp1
-　'(add
-　　(amb (con (num 1) (con (num 2) (emp))))
-　　(num 3)))
 
-(def ambExp2
-　'(add
-　　(amb (con (num 1) (con (num 2) (emp))))
-　　(amb (con (num 3) (con (num 4) (emp))))))
-
-(def ambExp3
-　'(add
-　　(amb (con (num 1) (con (num 2) (emp))))
-　　(amb (con (num 10) (con (num 20) (con (num 30) (emp)))))))
+(factorial 5)
+= ((YC F) 5)
+= (F ((YC F) 5))
 
 ----------------------------------------
 
-user=> (def calculator (driver ambExp2))
-#'user/calculator
+(factorial 5)
+= (F ((YC F) 5))
+= (if (= 5 1) 1 (* 5 ((YC F) 4)))
+= (* 5 ((YC F) 4))
+= (* 5 (F ((YC F) 4)))
+= (* 5 (if (= 4 1) 1 (* 4 ((YC F) 3))))
+= (* 5 (* 4 ((YC F) 3)))
 
-user=> (calculator)
-[(+ 1 3) 4]
+----------------------------------------
 
-user=> (calculator)
-[(+ 1 4) 5]
+;; 汎用的にしようとこう書いてみたけれど、
+;; 名前はどおしたらいいんだろう？
 
-user=> (calculator)
-[(+ 2 3) 5]
+(def foo
+　(fn [opr]
+　　(YC
+　　　(fn [fact]
+　　　　(fn [n]
+　　　　　(if (= n 1)
+　　　　　　1
+　　　　　　(opr n (fact (dec n)))))))))
 
-user=> (calculator)
-[(+ 2 4) 6]
 
-;; これ以上の候補はないので、計算終了
+;; 数列（「級数」ってゆーの？）にたいする操作
 
-user=> (calculator)
-"fin!"
+user=> ((foo +) 5)
+15
 
+user=> ((foo *) 5)
+120
+
+----------------------------------------
+
+;; リストを生成するのに使えるな、と。
+
+(def bar
+　(fn [opr]
+　　(YC
+　　　(fn [fact]
+　　　　(fn [n]
+　　　　　(if (= n 0)
+　　　　　　nil
+　　　　　　(opr n (fact (dec n)))))))))
+
+
+user=> ((bar cons) 10)
+(10 9 8 7 6 5 4 3 2 1)
+
+user=> (apply + ((bar cons) 10))
+55
+
+user=> ((#(YC
+　(fn [fact]
+　　(fn [n]
+　　　(if (= n 0)
+　　　　nil
+　　　　(% n (fact (dec n))))))) cons) 5)
+  #_=>   #_=>   #_=>   #_=>   #_=> (5 4 3 2 1)
 
 ========================================
