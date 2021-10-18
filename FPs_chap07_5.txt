@@ -1,0 +1,321 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+========================================
+;; 継続による反復処理からの脱出（P251 - 260）
+========================================
+
+(def my-identity
+　(fn [any] any))
+
+;; 「成功継続」：反復処理を脱出する
+
+(def continuesOnSuccess my-identity)
+
+;; 「失敗継続」：反復処理を続ける
+
+(def continuesOnFailure
+　(fn [ aStream
+　　　　 pred
+    　  escapesFromRecursion
+   　   continuesOnRecursion ]
+   (FIND
+   　aStream
+   　pred
+   　escapesFromRecursion
+   　continuesOnRecursion)))
+
+;; ストリーム（aStream）から、条件（pred）に合致する値を探し続ける
+
+(def FIND
+　(fn [ aStream
+　　　　　pred
+　　　　　continuesOnSuccess
+　　　　　continuesOnFailure ]
+　　　　　(MATCH
+　　　　　　aStream
+　　　　　　{ 'emp (fn [] continuesOnSuccess)
+　　　　　　　'con (fn [[head & tailThunk]]
+　　　　　　　　　　　　(if (pred head)
+　　　　　　　　　　　　　(continuesOnSuccess head)
+　　　　　　　　　　　　　(continuesOnFailure
+　　　　　　　　　　　　　　((first tailThunk))
+　　　　　　　　　　　　　　pred
+　　　　　　　　　　　　　　continuesOnSuccess
+　　　　　　　　　　　　　　continuesOnFailure))) })))
+
+;; MATCH を使わないバージョン
+
+(def FIND2
+　(fn [ [opr & data]
+　　　　　pred
+　　　　　continuesOnSuccess
+　　　　　continuesOnFailure ]
+　　　　　((opr
+　　　　　　{ 'emp (fn [] continuesOnSuccess)
+　　　　　　　'con (fn [[head & tailThunk]]
+　　　　　　　　　　　　(if (pred head)
+　　　　　　　　　　　　　(continuesOnSuccess head)
+　　　　　　　　　　　　　(continuesOnFailure
+　　　　　　　　　　　　　　((first tailThunk))
+　　　　　　　　　　　　　　pred
+　　　　　　　　　　　　　　continuesOnSuccess
+　　　　　　　　　　　　　　continuesOnFailure))) })
+　　　　　　data)))
+
+(def continuesOnFailure2
+　(fn [ aStream
+　　　　 pred
+    　  escapesFromRecursion
+   　   continuesOnRecursion ]
+   (FIND2
+   　aStream
+   　pred
+   　escapesFromRecursion
+   　continuesOnRecursion)))
+
+----------------------------------------
+
+;; データ（正、負数の無限のストリーム）
+
+(def pos (enumFrom inc 1))
+(def neg (enumFrom dec -1))
+
+----------------------------------------
+
+;; 条件が満たされたときに反復処理を抜ける
+
+user=> (FIND pos #(= 100 %) continuesOnSuccess continuesOnFailure)
+100
+
+user=> (FIND neg #(= -100 %) continuesOnSuccess continuesOnFailure)
+-100
+
+
+;; 数が大きかったり、条件が満たされたときにはスタックを食いつぶす
+
+user=> (FIND pos #(= 1237 %) continuesOnSuccess continuesOnFailure)
+Execution error (StackOverflowError) at user/enumFrom (REPL:2).
+null
+
+user=> (FIND neg #(= 1 %) continuesOnSuccess continuesOnFailure)
+Execution error (StackOverflowError) at user/MATCH (REPL:2).
+null
+
+
+;; MATCH を使わないバージョン
+
+user=> (FIND2 pos #(= 100 %) continuesOnSuccess continuesOnFailure2)
+100
+
+user=> (FIND2 neg #(= -100 %) continuesOnSuccess continuesOnFailure2)
+-100
+
+≈
+========================================
+;; 非決定性計算機を作る（P260 - 268）
+========================================
+
+;; まずは、決定計算機を作る
+
+(def MATCH
+　(fn [[opr & data] pattern] ((pattern opr) data)))
+
+(def CALC
+　(fn [anExp]
+　　(MATCH
+　　　anExp
+　　　{ 'num (fn [n] (first n))
+       'add (fn [[exp1 & exp2]]
+       　　　   (+ (CALC exp1)
+                  (CALC (first exp2)))) })))
+
+;; MATCH を使わないバージョン
+
+(def CALC2
+　(fn [[opr & data]]
+　　((opr
+　　　{ 'num (fn [n] (first n))
+       'add (fn [[exp1 & exp2]]
+       　　　   (+ (CALC2 exp1)
+                  (CALC2 (first exp2)))) })
+　　　data)))
+
+;; 可変長バージョン
+
+(def CALC3
+　(fn [[opr & data]]
+　　((opr
+　　　{ 'num (fn [n] (first n))
+       'add (fn [alist]
+       　　　　(apply + (map #(CALC3 %) alist))) })
+　　　data)))
+
+----------------------------------------
+
+;; 擬似 LISP コードを評価する
+
+user=> (CALC '(num 1))
+1
+
+user=> (CALC '(add (num 1) (num 2)))
+3
+
+
+user=> (CALC2 '(add (num 3) (num 4)))
+7
+
+
+user=> (CALC3 '(add (num 1) (num 2) (num 3)))
+6
+
+user=> (CALC3 '(add (num 1) (num 2) (add (num 3) (num 4))))
+10
+
+
+========================================
+;; 非決定性計算機を作る（「継続」の感触）
+========================================
+
+(def MATCH
+　(fn [[opr & data] pattern] ((pattern opr) data)))
+
+(def CALC4
+　(fn [anExp
+       continuesOnFailure
+　　　　continuesOnSuccess]
+　　(MATCH
+　　　anExp
+　　　{ 'num (fn [n] (continuesOnSuccess (first n) continuesOnFailure))
+　　    'add (fn [[x & y]]
+             ;; まず 引数x を評価する
+　　　　　　　　(CALC4 x
+　　　　　　　　　;; x の計算に失敗すれば、おおもとの失敗継続を渡す
+　　　　　　　　　continuesOnFailure
+
+　　　　　　　　　(fn [resultX continuesOnFailureX]
+　　             ;; つぎに 引数y を評価する
+　　　　　　　　　　(CALC4 (first y)
+
+　　　　　　　　　　　;; y の計算に失敗すれば、x の失敗継続を渡す
+　　　　　　　　　　　continuesOnFailureX
+
+　　　　　　　　　　　(fn [resultY continuesOnFailureY]
+　　　　　　　　　　　　;; 引数x と y がともに成功すれば、両者の値で足し算を計算する
+　　　　　　　　　　　　(continuesOnSuccess (list '+ resultX resultY) continuesOnFailureY))))))
+
+　　　　　;; 「曖昧な（"ambiguous"）」
+　　　　　'amb (fn [choices]
+　　　　　　　　　(letfn[ (calcAmb [choices]
+　　　　　　　　　　(MATCH
+　　　　　　　　　　　(first choices)
+　　　　　　　　　　　{ 'emp (fn [& args] (continuesOnFailure))
+　　　　　　　　　　　　'con (fn [[head & tail]]
+　　　　　　　　　　　　　　　　(CALC4
+　　　　　　　　　　　　　　　　　head
+　　　　　　　　　　　　　　　　　(fn [& args] (calcAmb tail))
+　　　　　　　　　　　　　　　　　continuesOnSuccess)) })) ]
+
+　　　　　　　　　　(calcAmb choices)))
+　})))
+
+;; MATCH を使わないバージョン
+
+(def CALC4-2
+　(fn [[opr & data]
+       continuesOnFailure
+　　　　continuesOnSuccess]
+　　((opr
+　　　{ 'num (fn [n] (continuesOnSuccess (first n) continuesOnFailure))
+　　    'add (fn [[x & y]]
+             ;; まず 引数x を評価する
+　　　　　　　　(CALC4-2 x
+　　　　　　　　　;; x の計算に失敗すれば、おおもとの失敗継続を渡す
+　　　　　　　　　continuesOnFailure
+
+　　　　　　　　　(fn [resultX continuesOnFailureX]
+　　             ;; つぎに 引数y を評価する
+　　　　　　　　　　(CALC4-2 (first y)
+
+　　　　　　　　　　　;; y の計算に失敗すれば、x の失敗継続を渡す
+　　　　　　　　　　　continuesOnFailureX
+
+　　　　　　　　　　　(fn [resultY continuesOnFailureY]
+　　　　　　　　　　　　;; 引数x と y がともに成功すれば、両者の値で足し算を計算する
+　　　　　　　　　　　　(continuesOnSuccess (list '+ resultX resultY) continuesOnFailureY))))))
+
+　　　　　;; 「曖昧な（"ambiguous"）」
+　　　　　'amb (fn [choices]
+　　　　　　　　　(letfn[ (calcAmb [choices]
+　　　　　　　　　　(((first (first choices))
+　　　　　　　　　　　{ 'emp (fn [& args] (continuesOnFailure))
+　　　　　　　　　　　　'con (fn [[head & tail]]
+　　　　　　　　　　　　　　　　(CALC4-2
+　　　　　　　　　　　　　　　　　head
+　　　　　　　　　　　　　　　　　(fn [& args] (calcAmb tail))
+　　　　　　　　　　　　　　　　　continuesOnSuccess)) })
+　　　　　　　　　　　(rest (first choices)))) ]
+
+　　　　　　　　　　(calcAmb choices)))
+　　}) data)))
+
+;; 非決定計算機の駆動関数
+
+(defn driver [expr]
+　(let [ suspendedComputation (atom nil)
+　　　　　continuesOnFailure (fn [] "fin!")
+　　　　　continuesOnSuccess (fn [anyVal continuesOnFail]
+　　　　　　(do
+　　　　　　　;; 状態を更新する
+　　　　　　　(reset! suspendedComputation continuesOnFail)
+　　　　　　　;; 計算式の組み合わせと、その計算結果を対にした値
+　　　　　　　[anyVal (eval anyVal)])) ]
+　　(fn []
+　　　(if (nil? @suspendedComputation)
+　　　　(CALC4-2 expr continuesOnFailure continuesOnSuccess)
+　　　　(@suspendedComputation)))))
+
+----------------------------------------
+
+;; データ（擬似 LISP コード）
+
+(def ambExp1
+　'(add
+　　(amb (con (num 1) (con (num 2) (emp))))
+　　(num 3)))
+
+(def ambExp2
+　'(add
+　　(amb (con (num 1) (con (num 2) (emp))))
+　　(amb (con (num 3) (con (num 4) (emp))))))
+
+(def ambExp3
+　'(add
+　　(amb (con (num 1) (con (num 2) (emp))))
+　　(amb (con (num 10) (con (num 20) (con (num 30) (emp)))))))
+
+----------------------------------------
+
+user=> (def calculator (driver ambExp2))
+#'user/calculator
+
+user=> (calculator)
+[(+ 1 3) 4]
+
+user=> (calculator)
+[(+ 1 4) 5]
+
+user=> (calculator)
+[(+ 2 3) 5]
+
+user=> (calculator)
+[(+ 2 4) 6]
+
+;; これ以上の候補はないので、計算終了
+
+user=> (calculator)
+"fin!"
+
+
+========================================

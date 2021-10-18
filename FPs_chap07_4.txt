@@ -1,0 +1,138 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+
+========================================
+;; 非同期処理にコールバック関数を渡す（P244 - 251）
+========================================
+
+;; たらいまわし関数
+
+(def tarai
+　(fn [x y z]
+　　(if (<= x y)
+　　　y
+　　　(tarai
+　　　　(tarai (- x 1) y z)
+　　　　(tarai (- y 1) z x)
+　　　　(tarai (- z 1) x y)))))
+
+
+----------------------------------------
+
+;; ベンチマーク用補助マクロ
+
+(defmacro bench [expr & flg]
+　`(let [start# (System/nanoTime) result# ~expr]
+　　(if ~@flg
+　　　{:result result# :elapsed (- (System/nanoTime) start#)}
+　　　{:result ~''---- :elapsed (- (System/nanoTime) start#)})))
+
+
+user=> (bench (tarai (* 1 2) 1 0))
+{:result ----, :elapsed 165179}
+
+user=> (bench (tarai (* 1 2) 1 0) true)
+{:result 2, :elapsed 102813}
+
+user=> (bench (tarai (* 5 2) 5 0) true)
+{:result 10, :elapsed 23635824}
+
+user=> (bench (tarai (* 7 2) 7 0) true)
+{:result 14, :elapsed 41541753669}
+
+----------------------------------------
+
+;; 補助関数
+
+(defn http-char [[c1 & c2]]
+　(Integer/parseInt (str (char c1) (char (first c2))), 16))
+
+(defn decode-params [s encode]
+　(loop [[car & cdr] (for [b (.getBytes s encode)] b) rslt []]
+　　(if (nil? car)
+　　　(String. (byte-array rslt) encode)
+　　　(cond
+　　　　(= car (byte \%)) (recur (rest (rest cdr))
+　　　　　(conj rslt (try (http-char cdr) (catch NumberFormatException e (byte \space)))))
+　　　　(= car (byte \+)) (recur cdr (conj rslt (int \space)))
+　　　　:else (recur cdr (conj rslt car))))))
+
+(defn div-by [s sep] (clojure.string/split s sep))
+
+(defn parse-params [s encode]
+　(apply conj
+　　(for [ pair (div-by s #"&") :let [[i1 i2] (div-by pair #"=")] ]
+　　　(if (nil? i2)
+　　　　i1
+　　　　{(symbol (.toUpperCase i1)) (decode-params i2 encode)}))))
+
+(defn parse-request-line [encode s]
+　(let [[i1 i2] (div-by (first (rest (div-by s #" "))) #"\?")]
+　　(vec
+　　　(concat
+　　　　(list (parse-params i1 encode))
+　　　　(if (not (nil? i2))
+　　　　　(list (parse-params i2 encode)))))))
+
+==============================================
+
+;; イベントハンドラー
+
+(defn tarai-request-handler [line encode]
+　(let [ url (parse-request-line encode (first line)) ]
+　　(if (= (first url) "/tarai")
+　　　(let [content
+
+　　　　(if (empty? (rest url))
+　　　　　;; 初期表示時
+　　　　　"<html><form>Put some number [ 1 - 7 ] : <input name='num'/><br><a href=\"/quit\">quit</a></form></html>"
+
+　　　　　;; 結果表示時
+　　　　　(let [n (Integer/parseInt ((first (rest url)) 'NUM))]
+　　　　　　(clojure.pprint/cl-format false
+　　　　　　　"<html><form>Put some number  [ 1 - 7 ] : <input name='num'/><br><br>(tarai (* ~a 2) ~a 0) : Taraied Result, ~a!<br><a href=\"/quit\">quit</a></form></html>" n n (tarai (* n 2) n 0)))) ]
+
+　　　　(clojure.pprint/cl-format false
+　　　　　"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length:~a\r\n\r\n~a"
+　　　　　(count content) content))
+
+　　　(if (= (first url) "/quit")
+　　　　"bye!"
+　　　　"Sorry... I don't know that page."))))
+
+==============================================
+
+(import '(java.io StringReader InputStreamReader BufferedReader BufferedWriter OutputStreamWriter)
+　　　　　'(java.net ServerSocket))
+
+;; only for GET request
+
+(defn serve [hdlr encode]
+　(with-open [socket (ServerSocket. 8080)]
+　　(while true
+　　　(with-open [　stream (. socket accept)
+　　　　　　　　　　w (BufferedWriter. (OutputStreamWriter. (.getOutputStream stream)))
+　　　　　　　　　　r (BufferedReader. (InputStreamReader. (.getInputStream stream))) ]
+
+　　　　(let [ content (hdlr (line-seq r) encode) ]
+
+　　　　　;; コンソール向け
+　　　　　(println content)
+
+　　　　　;; ブラウザ向け
+　　　　　(. w write content)
+　　　　　(.flush w)
+
+　　　　　(if (= "bye!" content)
+　　　　　　(do
+　　　　　　　(.close stream)
+　　　　　　　(.close socket))))))))
+
+
+==============================================
+
+(serve tarai-request-handler "UTF8")
+
+==============================================

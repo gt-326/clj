@@ -1,0 +1,367 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+========================================
+;; カリー化で関数を返す（P194 - 200）
+========================================
+
+;; 非カリー化スタイル（多項関数）
+
+(def multipleOf
+　(fn [n m] (= 0 (rem m n))))
+
+
+user=> (multipleOf 2 5)
+false
+
+user=> (multipleOf 2 4)
+true
+
+
+;; カリー化（高階関数化）
+
+(def multipleOfCurried
+　(fn [n]
+　　(fn [m] (= 0 (rem m n)))))
+
+
+user=> ((multipleOfCurried 2) 5)
+false
+
+user=> ((multipleOfCurried 2) 4)
+true
+
+user=> (multipleOfCurried 2)
+#object[user$multipleOfCurried$fn__2033 0x9918444 "user$multipleOfCurried$fn__2033@9918444"]
+
+user=> (def evenp? (multipleOfCurried 2))
+#'user/evenp?
+
+user=> (evenp? 5)
+false
+
+user=> (evenp? 4)
+true
+
+
+;; べき乗計算をする高階関数（再帰版）
+
+(def exponential
+　(fn [base]
+　　(fn [idx]
+　　　(if (= 0 idx)
+　　　　1
+　　　　(* base ((exponential base) (dec idx)))))))
+
+;; べき乗計算をする高階関数（loop/recur 版）
+
+(def exponential2
+　(fn [base]
+　　(fn [idx]
+　　　(loop [i idx acc 1]
+　　　　(if (zero? i)
+　　　　　acc
+　　　　　(recur (dec i) (* acc base)))))))
+
+
+;; 2 を 3 乗倍する
+
+user=> ((exponential 2) 3)
+8
+
+;; fnc に適用する引数（x、y）の順序を入れ替える高階関数
+
+(def flip
+　(fn [fnc]
+　　(fn [x]
+　　　(fn [y]
+　　　　((fnc y) x)))))
+
+
+;; 2 乗倍する関数を返す関数を定義する
+
+(def square ((flip exponential) 2))
+
+;; 3 乗倍する関数を返す関数を定義する
+
+(def cube ((flip exponential) 3))
+
+user=> (square 4)
+16
+
+user=> (cube 4)
+64
+
+
+;; init に、関数 fnc を cnt 回適用する関数（チャーチ数生成）
+
+(def genChurchNums
+　(fn [cnt]
+　　(fn [fnc]
+　　　(fn [init]
+　　　　(loop [i cnt acc init]
+　　　　　(if (zero? i)
+　　　　　　acc
+　　　　　　(recur (dec i) (fnc acc))))))))
+
+(def zero (genChurchNums 0))
+
+(def one (genChurchNums 1))
+
+(def two (genChurchNums 2))
+
+(def three (genChurchNums 3))
+
+
+user=> ((three dec) 0)
+-3
+
+user=> ((three (fn [n] (* n 10))) 1)
+1000
+
+user=> ((zero #(* % 10)) 1)
+1
+
+
+========================================
+;; コンビネータで関数を組み合わせる（P201 - 213）
+========================================
+
+;; 関数を生成する
+
+(def evenp
+　(fn [n]
+　　(= 0 (rem n 2))))
+
+(def !
+　(fn [pred]
+　　(fn [arg]
+　　　(not (pred arg)))))
+
+
+;; ! を用いて evenp と反対の挙動をする oddp を作成する
+
+(def oddp (! evenp))
+
+
+user=> (oddp 3)
+true
+
+
+;; 関数を合成する（※あえて compose をカリー化する必要はない）
+
+(def compose
+　(fn [f g]
+　　(fn [arg]
+　　　(f (g arg)))))
+
+(def fnc1
+　(fn [x] (+ (* x x) 1)))
+
+(def fnc2
+　(fn [x] (- x 2)))
+
+
+user=> ((compose fnc1 fnc2) 10)
+65
+
+user=> (fnc1 (fnc2 10))
+65
+
+
+;; 関数を適用する順序によって、結果が変わってしまう。
+
+user=> ((compose fnc2 fnc1) 10)
+99
+
+
+;; 関数合成の条件
+
+(def opposite
+　(fn [x] (- x)))
+
+(def addCurried
+　(fn [x]
+　　(fn [y] (+ x y))))
+
+(def compose2
+　(fn [f g]
+　　(fn [& arg]
+　　　(f (g arg)))))
+
+(def add
+　(fn [[x y]] (+ x y)))
+
+
+user=> ((compose opposite (addCurried 2)) 3)
+-5
+
+user=> ((compose2 opposite add) 2 3)
+-5
+
+
+;; 関数合成による抽象化
+
+;; …をおこなうまえに同じ機能の関数を作る。
+;; （[ FPs_chap05_1.txt ]で実装済みのやつを引っぱってきただけ、なのだけど）。
+
+;; 補助関数
+
+(defn lst [[opr & data]]
+　(opr
+　　{ 'emp (fn [pattern] (pattern 'emp))
+　　　'con (fn [pattern] ((pattern 'con) data)) }))
+
+;; 機能本体
+
+(def my-last
+　(fn [alist]
+　　((lst alist)
+　　　{ 'emp nil
+　　　　'con (fn [[head tail]]
+　　　　　　　　((lst tail)
+　　　　　　　　　{ 'emp head
+　　　　　　　　　　'con (fn [& _] (my-last tail)) })) })))
+
+
+;; リストの最後の要素を取得する。
+
+user=> (my-last '(con 1 (con 2 (con 3 (emp)))))
+3
+　
+
+;; 合成する部品
+
+(def head
+　(fn [[opr & data]]
+　　((opr
+　　　{ 'emp (fn [& _] nil)
+　　　　'con (fn [[h t]] h) })
+　　　data)))
+
+(def rev
+　(fn [alist]
+　　(letfn [(rev-helper [[opr & data] acc]
+　　　((opr
+　　　　{ 'emp (fn [& _] acc)
+　　　　　'con (fn [[h t]] (rev-helper t (list 'con h acc))) })
+　　　　data))]
+　　　(rev-helper alist '(emp)))))
+
+
+;; 部品1：先頭の要素を取得する関数の挙動
+
+user=> (head '(con 1 (con 2 (con 3 (emp)))))
+1
+
+;; 部品２：リストの並びを逆順にする
+
+user=> (rev '(con 1 (con 2 (con 3 (emp)))))
+(con 3 (con 2 (con 1 (emp))))
+
+
+;; 「部品１」、「２」の関数を合成し、
+;; 抽象化によりリストの最後の要素を取得する「my-last」と同等の機能を実現している。
+
+user=> ((compose head rev) '(con 1 (con 2 (con 3 (emp)))))
+3
+
+
+========================================
+;; Y コンビネーター（P212 - 213）
+========================================
+
+(def YC
+　(fn [F]
+　　((fn [x] (x x))
+　　　(fn [y]
+　　　　(F
+　　　　　(fn [z] ((y y) z)))))))
+
+(def factorial
+　(YC
+　　(fn [fact]
+　　　(fn [n]
+　　　　(if (= n 1)
+　　　　　1
+　　　　　(* n (fact (dec n))))))))
+
+
+;; 階乗計算：[ 4 * 3 * 2 * 1 = ? ]
+
+user=> (factorial 5)
+120
+
+----------------------------------------
+
+(YC F)
+= (F (YC F))
+
+
+(factorial 5)
+= ((YC F) 5)
+= (F ((YC F) 5))
+
+----------------------------------------
+
+(factorial 5)
+= (F ((YC F) 5))
+= (if (= 5 1) 1 (* 5 ((YC F) 4)))
+= (* 5 ((YC F) 4))
+= (* 5 (F ((YC F) 4)))
+= (* 5 (if (= 4 1) 1 (* 4 ((YC F) 3))))
+= (* 5 (* 4 ((YC F) 3)))
+
+----------------------------------------
+
+;; 汎用的にしようとこう書いてみたけれど、
+;; 名前はどおしたらいいんだろう？
+
+(def foo
+　(fn [opr]
+　　(YC
+　　　(fn [fact]
+　　　　(fn [n]
+　　　　　(if (= n 1)
+　　　　　　1
+　　　　　　(opr n (fact (dec n)))))))))
+
+
+;; 数列（「級数」ってゆーの？）にたいする操作
+
+user=> ((foo +) 5)
+15
+
+user=> ((foo *) 5)
+120
+
+----------------------------------------
+
+;; リストを生成するのに使えるな、と。
+
+(def bar
+　(fn [opr]
+　　(YC
+　　　(fn [fact]
+　　　　(fn [n]
+　　　　　(if (= n 0)
+　　　　　　nil
+　　　　　　(opr n (fact (dec n)))))))))
+
+
+user=> ((bar cons) 10)
+(10 9 8 7 6 5 4 3 2 1)
+
+user=> (apply + ((bar cons) 10))
+55
+
+user=> ((#(YC
+　(fn [fact]
+　　(fn [n]
+　　　(if (= n 0)
+　　　　nil
+　　　　(% n (fact (dec n))))))) cons) 5)
+  #_=>   #_=>   #_=>   #_=>   #_=> (5 4 3 2 1)
+
+========================================

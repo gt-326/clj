@@ -1,0 +1,539 @@
+;; 『JavaScript を使って学ぶ関数型プログラミングの基礎』（長瀬嘉秀 監修／立川察理 著）
+;;  コード例のなかから、興味深いものをピックアップして、
+;; 「Clojure で実現するとこんな感じかな？」というコードを書いてみました。
+
+
+========================================
+;; クロージャーを使う（P213 - 230）
+========================================
+
+;; 「環境」、「名前空間」
+
+user=> (def foo 1)
+#'user/foo
+
+user=> foo
+1
+
+user=> (def bar "a string")
+#'user/bar
+
+user=> bar
+"a string"
+
+
+;; 別の名前空間から束縛を参照するには。
+
+gima=> user/foo
+1
+
+----------------------------------------
+
+(def multiplyOf
+　(fn [n]
+　　(fn [m]
+　　　(= 0 (rem m n)))))
+
+
+;; 自由変数「n」に 2 をバインドし、
+;; それを「環境」として保持する無名関数が生成される。
+
+user=> (multiplyOf 2)
+#object[user$multiplyOf$fn__2159 0x5ccf1bb8 "user$multiplyOf$fn__2159@5ccf1bb8"]
+
+
+;; 「twoFold」は、環境 <n => 2> を持つ（自由変数「n」が 2 を参照する）。
+
+(def twoFold
+　(multiplyOf 2))
+
+----------------------------------------
+
+;; クロージャーで状態をカプセル化する（カウンター生成関数）
+
+(defn gen_cntr [init]
+　(let [n (atom init)]
+　　(fn [] (swap! n inc))))
+
+user=> (def cntr (gen_cntr 0))
+#'user/cntr
+
+user=> (cntr)
+1
+
+user=> (cntr)
+2
+
+
+;; 新しいカウンター「cntr2」を追加しても、
+;; 変数「n」はそれぞれ独立していることが分かる。
+
+user=> (def cntr2 (gen_cntr 10))
+#'user/cntr2
+
+user=> (cntr2)
+11
+
+user=> (cntr)
+3
+
+
+----------------------------------------
+
+;; 不変なデータ構造を作る
+
+(def obj
+　{ 'emp (fn [&_] nil)
+　　'set (fn [k v]
+　　　　　(fn [o]
+　　　　　　(fn [queryKey]
+　　　　　　　(if (= k queryKey)
+　　　　　　　　v
+　　　　　　　　(((obj 'get) queryKey) o)))))
+　　'get (fn [k]
+　　　　　(fn [o]
+　　　　　　(o k)))
+　})
+
+----------------------------------------
+
+;; 単一レコード
+
+(def robot
+　(((obj 'set) "C3PO" "Star Wars")
+　(obj 'emp)))
+
+
+user=> (((obj 'get) "C3PO") robot)
+"Star Wars"
+
+user=> (((obj 'get) "Star Wars") robot)
+nil
+
+----------------------------------------
+
+;; 複数レコード（その１）
+
+(def my-compose
+　(fn [f g]
+　　(fn [arg]
+　　　(f (g arg)))))
+
+(def robots
+　((my-compose
+　　((obj 'set) "C3PO" "Star Wars")
+　　((obj 'set) "HAL9000" "2001: a space odessay"))
+　　(obj 'emp)))
+
+
+user=> (((obj 'get) "HAL9000") robots)
+"2001: a space odessay"
+
+user=> (((obj 'get) "C3PO") robots)
+"Star Wars"
+
+user=> (((obj 'get) "Baymax") robots)
+nil
+
+----------------------------------------
+
+;; 複数レコード（その２）
+
+(def three_robots
+　((my-compose
+　　((obj 'set) "C3PO" "Star Wars")
+　　((obj 'set) "HAL9000" "2001: a space odessay"))
+
+　　;; 追加分のレコード
+　　(((obj 'set) "Baymax" "Big Hero 6")
+　　　(obj 'emp))))
+
+
+user=> (((obj 'get) "Baymax") three_robots)
+"Big Hero 6"
+
+----------------------------------------
+
+;; 複数レコード（その３）
+
+(def four_robots
+　((my-compose
+　　((obj 'set) "C3PO" "Star Wars")
+　　((obj 'set) "HAL9000" "2001: a space odessay"))
+
+　　;; 追加分のレコード
+　　((my-compose
+　　　((obj 'set) "Baymax" "Big Hero 6")
+　　　((obj 'set) "T-1000" "Terminator 2: Judgment Day"))
+　　　(obj 'emp))))
+
+
+user=> (((obj 'get) "C3PO") four_robots)
+"Star Wars"
+
+user=> (((obj 'get) "HAL9000") four_robots)
+"2001: a space odessay"
+
+user=> (((obj 'get) "Baymax") four_robots)
+"Big Hero 6"
+
+user=> (((obj 'get) "T-1000") four_robots)
+"Terminator 2: Judgment Day"
+
+user=> (((obj 'get) "T-800") four_robots)
+nil
+
+----------------------------------------
+
+;; Clojure ではデータは不変なので、
+;; 上記のような特別なことはしなくていいんだけど…。
+
+(def robots
+　{ 'C3PO "Star Wars"
+　　'HAL9000 "2001: a space odessay" })
+
+
+user=> (robots 'C3PO)
+"Star Wars"
+
+user=> (robots 'HAL9000)
+"2001: a space odessay"
+
+user=> (robots 'baymax)
+nil
+
+========================================
+
+;; クロージャーでジェネレータを作る
+
+(defn generate [aStream]
+　(let [_stream (atom aStream)]
+　　(fn []
+　　　((fn [[opr & data]]
+　　　　(({
+　　　　;;　'emp (fn [&_] nil)
+　　　　　　'con (fn [[head & tailThunk]]
+　　　　　　　　　(do
+　　　　　　　　　　;; 「tailThunk」を実行し、
+　　　　　　　　　　;; 生成されたリストで「_stream」を上書きする。
+　　　　　　　　　　(reset! _stream ((first tailThunk)))
+　　　　　　　　　　head))
+　　　　　} opr) data)) @_stream))))
+
+(defn enumFrom [fnc n]
+　(list 'con n (fn [] (enumFrom fnc (fnc n)))))
+
+----------------------------------------
+
+;; 擬似 LISP データのストリームを生成する（「FPs_chap06_1.txt」より）
+
+user=> (def integers (enumFrom inc 0))
+#'user/integers
+
+user=> integers
+(con 0 #object[user$enumFrom$fn__2240 0x310a6b9e "user$enumFrom$fn__2240@310a6b9e"])
+
+user=> ((first (rest (rest integers))))
+(con 1 #object[user$enumFrom$fn__2240 0x5cd8f42d "user$enumFrom$fn__2240@5cd8f42d"])
+
+user=> ((first (rest (rest ((first (rest (rest integers))))))))
+(con 2 #object[user$enumFrom$fn__2240 0x4fb18a09 "user$enumFrom$fn__2240@4fb18a09"])
+
+----------------------------------------
+
+;; 無限ストリームからジェネレータを生成する
+
+user=> (def intGenerators (generate integers))
+#'user/intGenerators
+
+user=> (intGenerators)
+0
+
+user=> (intGenerators)
+1
+
+
+========================================
+「エラトステネスのふるい（Sieve）」
+========================================
+
+;; 代数的データ構造とパターンマッチングで実装したものを Clojure にトレースしてみたけれど、
+;; こんな感じかな？
+
+;; それにしても、うーん、処理の流れが追いにくいぞ。
+;; そして、ただ filter を呼んでるだけの remove の冗長さも気になるなぁ…。
+;; 一応動くけど、「何をやってるのか」ってとこをこのあとのとこで切り出してみる。
+
+(def STRM
+　{
+　　'filter
+　　　(fn [pred]
+　　　　(fn [[opr & data]]
+　　　　　((opr
+　　　　　　{ ;; 'emp "emp"
+　　　　　　　'con
+　　　　　　　　(fn [[head & tailThunk]]
+　　　　　　　　　(if (pred head)
+　　　　　　　　　　;; 条件（「ある数の倍数である」）に合致する場合
+　　　　　　　　　　(((STRM 'filter) pred) ((first tailThunk)))
+　　　　　　　　　　;; 素数である場合
+　　　　　　　　　　(list 'con head (fn [] (((STRM 'filter) pred) ((first tailThunk)))))))
+
+　　　　　　}) data)))
+
+　　'remove
+　　　(fn [pred]
+　　　　(fn [aStream]
+　　　　　(((STRM 'filter) #(pred %)) aStream)))
+
+　　'take (fn [[opr & data] n]
+　　　((opr
+　　　　{ 'con (fn [[head & tailThunk]]
+　　　　　　(if (= 0 n)
+　　　　　　　'(emp)
+　　　　　　　(list 'con head ((STRM 'take) ((first tailThunk)) (- n 1))))) })
+　　　　data))
+
+　　'toArray (fn [alist]
+　　　(letfn [ (toArrayHelper [[opr & data] acc]
+　　　　((opr
+　　　　　{ 'emp (fn [& args] (vec acc))
+　　　　　　'con (fn [[h & t]] (toArrayHelper (first t) (concat acc (list h)))) })
+　　　　　data)) ]
+　　　　(toArrayHelper alist '())))
+　})
+
+(defn sieve [[opr & data]]
+　((opr
+　　{ ;; 'emp "emp"
+　　　'con
+　　　　(fn [[head & tailThunk]]
+　　　　　(list 'con head
+　　　　　　(fn []
+　　　　　　　(sieve
+　　　　　　　　(((STRM 'remove)
+　　　　　　　　　;; pred
+　　　　　　　　　(fn [item] ((multipleOf head) item)))
+　　　　　　　　　((first tailThunk))))))) })
+　　data))
+
+----------------------------------------
+
+user=> (def primes (sieve (enumFrom inc 2)))
+#'user/primes
+
+user=> primes
+(con 2 #object[user$sieve$fn__2846$fn__2850 0x7f104f "user$sieve$fn__2846$fn__2850@7f104f"])
+
+user=> ((STRM 'take) primes 10)
+(con 2 (con 3 (con 5 (con 7 (con 11 (con 13 (con 17 (con 19 (con 23 (con 29 (emp)))))))))))
+
+user=> ((STRM 'toArray) ((STRM 'take) primes 10))
+[2 3 5 7 11 13 17 19 23 29]
+
+user=> (def primeGen (generate primes))
+#'user/primeGen
+
+user=> (primeGen)
+2
+user=> (primeGen)
+3
+user=> (primeGen)
+5
+user=> (primeGen)
+7
+user=> (primeGen)
+11
+
+========================================
+
+;; remove を廃して、
+;; 処理の核になっている my-filter と sieve2 のみに絞り込むことに。
+
+(defn my-filter [pred]
+　(fn [[head & tailThunk]]
+　　(if (pred head)
+　　　;; 〜素数でない〜
+　　　((my-filter pred) ((first tailThunk)))
+　　　;; 〜素数である〜
+　　　(list head (fn [] ((my-filter pred) ((first tailThunk))))))))
+
+(defn sieve2 [[head & tailThunk]]
+　(list head
+　　(fn []
+　　　(sieve2
+　　　　((my-filter #((multipleOf head) %))
+　　　　　((first tailThunk)))))))
+
+----------------------------------------
+
+;; 「enumFrom って何のことやら？」となるだろうから、もうちょい汎用的に iterate っぽくして。
+
+(defn my-iter [fnc n]
+　(list n #(my-iter fnc (fnc n))))
+
+user=> (sieve2 (my-iter inc 2))
+(2 #object[user$sieve2$fn__3537 0x31d52fb5 "user$sieve2$fn__3537@31d52fb5"])
+
+;; [ 2, 3, 5, 7 ... ] と素数を無限に取得し続ける、という触れ込みだけど、
+;; ごらんのとおり、最初の素数 2 と、自分自身（sieve2）を呼び出し、実行する無名関数とのリストが生成される「だけ」。
+;; ぐるぐると処理を駆動させてるのは、take というわけだ。
+
+(defn my-take [n [head & tailThunk]]
+　(if (= 0 n)
+　　'()
+　　(cons head (my-take (- n 1) ((first tailThunk))))))
+
+----------------------------------------
+
+user=> (my-take 10 (my-iter inc 2))
+(2 3 4 5 6 7 8 9 10 11)
+
+user=> (my-take 10 (sieve2 (my-iter inc 2)))
+(2 3 5 7 11 13 17 19 23 29)
+
+----------------------------------------
+
+;; 要するに。
+
+;; sieve2 は、要素を２つ持つリストを引数にもらい、
+;; 引数と同じ構造の、「要素を２つ持つリスト」を生成している。
+;; その中身は、先頭の要素が素数、つぎの要素は自分自身（sieve2）を呼び出す無名関数。
+;; 無名関数で包んでいるのは、無限ループにならないため。
+
+;; んで、自分自身を呼び出すときの引数（要素を２つ持つリスト）を生成するために、my-filter を呼び出している、と。
+
+;; つぎに、その my-filter は、
+;; １：引数の先頭（head）に素数が見つかるまで（その要素が条件 pred に合致しなくなるまで）、
+;; 自分自身の呼び出しを繰り返す。その際に条件 pred は据え置き、thunk を実行し、あらたに引数用のリスト生成している。
+
+;; ２：引数の先頭（head）に素数が見つかったら、リストを生成する。
+;; そのリストは、見つかった素数（head）と my-filter 自身を呼び出す無名関数を持っている。
+;; 無名関数のなかでの my-filter の呼び出し引数は、head を包含していた引数のリストの要素 tailThunk を実行して、
+;; あらたに生成されたリストになる。
+
+;; 上記「２」で生成されたリストは、
+;; （くりかえしになるが seive2 内部の）無名関数で、sieve2 自身を呼び出すときの引数となる。
+
+========================================
+
+;; Clojure の標準的な関数を組み合わせてやるとこんな感じかな？
+;; 短いけどあまり好きになれない。「やっつけたぜ」ってだけのようでね。
+
+(defn sieve [[head & tail]]
+  (filter #(not (= 0 (rem % head))) tail))
+
+(defn primes []
+  (map first
+    (iterate sieve (iterate inc 2))))
+
+----------------------------------------
+
+user=> (take 10 (primes))
+(2 3 5 7 11 13 17 19 23 29)
+
+
+========================================
+クロージャーの純粋性
+========================================
+
+・「参照透過性」あり
+
+(def multipleOfCurried
+　(fn [n]
+　　(fn [m] (= 0 (rem m n)))))
+
+
+・「参照透過性」なし（不純なクロージャー）
+
+(def counter
+　(fn [init]
+　　(let [cntr (atom init)]
+　　　(fn [& _]
+　　　　(swap! cntr inc)
+　　　　@cntr))))
+
+----------------------------------------
+
+;; チャーチ数（関数の適用回数で自然数を定義している）
+
+(def zero
+　(fn [f]
+　　(fn [x]
+　　　x)))
+
+(def one
+　(fn [f]
+　　(fn [x]
+　　　(f x))))
+
+(def two
+　(fn [f]
+　　(fn [x]
+　　　(f (f x)))))
+
+(def three
+　(fn [f]
+　　(fn [x]
+　　　(f (f (f x))))))
+
+user=> ((zero inc) 0)
+0
+
+user=> ((one inc) 0)
+1
+
+user=> ((two inc) 0)
+2
+
+----------------------------------------
+
+      /* 関数適用の回数を数えるcounterクロージャー */
+      var counter = (init) => {
+        var _init = init; // 可変な変数
+        return (_) => {
+          _init = _init + 1; // 代入で変数_initを更新する
+          return _init;
+        };
+      };
+
+      /* #@range_begin(church_one) */
+      var one = (f) => {
+        return (x) => {
+          return f(x); // f関数を1回適用する
+        };
+      };
+
+
+;; JavaScript の挙動をたどると「…ん！？」となる。
+;; one の一つ目の引数が f だけど、x はどこで渡るのかな？
+;; init には 0 が設定されるけど…。
+
+      /***** counterクロージャーを用いたチャーチ数のテスト *****/
+      /* #@range_begin(church_numeral_counter) */
+      expect(
+        one(counter(0))() // oneはチャーチ数（@<list>{church_numeral}）の1
+      ).to.eql(
+        1
+      );
+
+----------------------------------------
+
+;; 参照透過性のないクロージャーをもちいることで、
+;; チャーチ数のテストが容易になるよ、という例を Clojure にトレースしてみたけれど。
+;; これでいいのかなぁ？うーん。
+
+(def church_test #((% (counter 0)) 0))
+
+
+user=> (assert (= 0 (church_test zero)))
+nil
+
+user=> (assert (= 0 (church_test one)))
+Execution error (AssertionError) at user/eval4338 (REPL:1).
+Assert failed: (= 0 (church_test one))
+
+user=> (assert (= 1 (church_test one)))
+nil
+
+========================================
