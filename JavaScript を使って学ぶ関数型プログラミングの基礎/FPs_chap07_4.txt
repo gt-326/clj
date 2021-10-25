@@ -44,95 +44,87 @@ user=> (bench (tarai (* 7 2) 7 0) true)
 
 ----------------------------------------
 
-;; 補助関数
+[ client ]
 
-(defn http-char [[c1 & c2]]
-　(Integer/parseInt (str (char c1) (char (first c2))), 16))
+python -m telnetlib localhost 8888
 
-(defn decode-params [s encode]
-　(loop [[car & cdr] (for [b (.getBytes s encode)] b) rslt []]
-　　(if (nil? car)
-　　　(String. (byte-array rslt) encode)
-　　　(cond
-　　　　(= car (byte \%)) (recur (rest (rest cdr))
-　　　　　(conj rslt (try (http-char cdr) (catch NumberFormatException e (byte \space)))))
-　　　　(= car (byte \+)) (recur cdr (conj rslt (int \space)))
-　　　　:else (recur cdr (conj rslt car))))))
+----------------------------------------
 
-(defn div-by [s sep] (clojure.string/split s sep))
+[ server ]
 
-(defn parse-params [s encode]
-　(apply conj
-　　(for [ pair (div-by s #"&") :let [[i1 i2] (div-by pair #"=")] ]
-　　　(if (nil? i2)
-　　　　i1
-　　　　{(symbol (.toUpperCase i1)) (decode-params i2 encode)}))))
+(import '(java.io InputStreamReader OutputStreamWriter)
+　　　　'(clojure.lang LineNumberingPushbackReader)
+　　　　'(java.net ServerSocket))
 
-(defn parse-request-line [encode s]
-　(let [[i1 i2] (div-by (first (rest (div-by s #" "))) #"\?")]
-　　(vec
-　　　(concat
-　　　　(list (parse-params i1 encode))
-　　　　(if (not (nil? i2))
-　　　　　(list (parse-params i2 encode)))))))
+(defn serve
+　([] (serve 8888))
+　([port] 
+　　(with-open [ socket (ServerSocket. port)
+　　　　　　　　 stream (. socket accept)
+　　　　　　　　　r (LineNumberingPushbackReader. (InputStreamReader. (.getInputStream stream)))
+    　  　　      w (OutputStreamWriter. (.getOutputStream stream)) ]
 
-==============================================
+　　　(let [eof (new Object)]
+　　　　(loop [chunk (read r false eof)]
+　　　　　(when-not (= chunk eof)
+　　　　　　(let [ rslt
+　　　　　　　(if (number? chunk)
+　　　　　　　　(str "taraied: " (bench (tarai (* 2 chunk) chunk 0) true))
+　　　　　　　　(str "non-number: " (clojure.string/upper-case chunk))) ]
 
-;; イベントハンドラー
+　　　　　　　;; ログ
+　　　　　　　(println "\nclient: " chunk)
+　　　　　　　(println rslt)
 
-(defn tarai-request-handler [line encode]
-　(let [ url (parse-request-line encode (first line)) ]
-　　(if (= (first url) "/tarai")
-　　　(let [content
+　　　　　　　;; クライアント向け
+　　　　　　　(binding [*out* w]
 
-　　　　(if (empty? (rest url))
-　　　　　;; 初期表示時
-　　　　　"<html><form>Put some number [ 1 - 7 ] : <input name='num'/><br><a href=\"/quit\">quit</a></form></html>"
+　　　　　　　　;; 以下、どれも同じように動く。
+　　　　　　　　(println rslt))
 
-　　　　　;; 結果表示時
-　　　　　(let [n (Integer/parseInt ((first (rest url)) 'NUM))]
-　　　　　　(clojure.pprint/cl-format false
-　　　　　　　"<html><form>Put some number  [ 1 - 7 ] : <input name='num'/><br><br>(tarai (* ~a 2) ~a 0) : Taraied Result, ~a!<br><a href=\"/quit\">quit</a></form></html>" n n (tarai (* n 2) n 0)))) ]
+　　　　　　　　;; (. w write rslt)
+　　　　　　　　;; (. w write "\n")
+　　　　　　　　;; (.flush w))
 
-　　　　(clojure.pprint/cl-format false
-　　　　　"HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length:~a\r\n\r\n~a"
-　　　　　(count content) content))
+　　　　　　　　;; (prn rslt)
+　　　　　　　　;; (flush)))
 
-　　　(if (= (first url) "/quit")
-　　　　"bye!"
-　　　　"Sorry... I don't know that page."))))
+　　　　　　(recur (read r false eof)))))))))
 
-==============================================
 
-(import '(java.io StringReader InputStreamReader BufferedReader BufferedWriter OutputStreamWriter)
-　　　　　'(java.net ServerSocket))
+;; on-thread はなくても問題ないけれど。
 
-;; only for GET request
-
-(defn serve [hdlr encode]
-　(with-open [socket (ServerSocket. 8080)]
-　　(while true
-　　　(with-open [　stream (. socket accept)
-　　　　　　　　　　w (BufferedWriter. (OutputStreamWriter. (.getOutputStream stream)))
-　　　　　　　　　　r (BufferedReader. (InputStreamReader. (.getInputStream stream))) ]
-
-　　　　(let [ content (hdlr (line-seq r) encode) ]
-
-　　　　　;; コンソール向け
-　　　　　(println content)
-
-　　　　　;; ブラウザ向け
-　　　　　(. w write content)
-　　　　　(.flush w)
-
-　　　　　(if (= "bye!" content)
-　　　　　　(do
-　　　　　　　(.close stream)
-　　　　　　　(.close socket))))))))
+(defn on-thread [fnc]
+  (doto (new Thread fnc) (.start)))
 
 
 ==============================================
 
-(serve tarai-request-handler "UTF8")
+[ 実行時：server ]
+
+user=> (on-thread serve)
+#object[java.lang.Thread 0x73450654 "Thread[Thread-10,5,main]"]
+
+user=> 
+client:  1
+taraied: {:result 2, :elapsed 209628}
+
+----------------------------------------------
+
+[ 実行時：client ]
+
+$ python -m telnetlib localhost 8888
+1
+taraied: {:result 2, :elapsed 209628}
+2
+taraied: {:result 4, :elapsed 52568}
+3
+taraied: {:result 6, :elapsed 503205}
+7
+5　　　　　　　　　　　　　　　　　　　　　　<- tarai サーバーからのレスポンスが来る前に表示された①
+4　　　　　　　　　　　　　　　　　　　　　　<- tarai サーバーからのレスポンスが来る前に表示された②
+taraied: {:result 14, :elapsed 42691210626}
+taraied: {:result 10, :elapsed 24662567}
+taraied: {:result 8, :elapsed 910653}
 
 ==============================================
