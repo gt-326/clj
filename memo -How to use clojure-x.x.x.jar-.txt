@@ -118,7 +118,7 @@ build/classes/hw/core__init.class
 build/classes/hw/core.class
 build/classes/hw/core$_main.class
 
-　-> パスに build/classes が含まれている
+　-> パスに build/classes/ が含まれている
 
 
 ・MANIFEST.MF を確認
