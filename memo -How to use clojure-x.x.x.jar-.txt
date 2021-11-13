@@ -74,7 +74,7 @@ hw
 ==========================
 
 ・repl 実行
-bash-3.2$ java -cp ./clojure-1.10.3.jar:./spec.alpha-0.2.194.jar:./core.specs.alpha-0.2.56.jar:./src clojure.main
+bash-3.2$ java -cp ./src:./clojure-1.10.3.jar:./spec.alpha-0.2.194.jar:./core.specs.alpha-0.2.56.jar clojure.main
 
 　-> ちゃんと ./src を記載しないと require できないので注意。
 
@@ -118,11 +118,14 @@ build/classes/hw/core__init.class
 build/classes/hw/core.class
 build/classes/hw/core$_main.class
 
-　-> パスに build/classes/ が含まれている
+　-> パスに build/classes/ が含まれている。
 
 
 ・MANIFEST.MF を確認
 bash-3.2$ jar xf hw.jar META-INF/MANIFEST.MF
+
+　-> META-INF/MANIFEST.MF が出力される。
+
 bash-3.2$ cat META-INF/MANIFEST.MF
 Manifest-Version: 1.0
 Created-By: 13.0.1 (Oracle Corporation)
@@ -131,6 +134,8 @@ Main-Class: hw.core
 
 ・jar ファイルの生成　その２　[ hw2.jar ]
 bash-3.2$ jar cmf META-INF/MANIFEST.MF hw2.jar -C build/classes hw
+
+　-> 末尾に "hw" が付いていることに注意。
 
 bash-3.2$ jar tf hw2.jar
 META-INF/
@@ -145,8 +150,10 @@ hw/core.class
 hw/core$_main.class
 
 　-> パスに build/classes/ が含まれていない。
-　-> classesフォルダを含まない形でパッケージングする必要がある。
-
+　-> classesフォルダを含まない形でパッケージングしている。
+　
+ -> このパッケージングのちがい（ hw.jar、hw2.jar ）がどのような結果をもたらすのか、確認しよう。
+ 
 
 ・jar ファイルの実行　その１ [ hw.jar ]
 
@@ -155,14 +162,14 @@ bash-3.2$ java -cp ./clojure-1.10.3.jar:./spec.alpha-0.2.194.jar:./core.specs.al
 原因: java.lang.ClassNotFoundException: hw.core
 
 
-・jar ファイルの実行　その２ [ hw2.jar ：依存関係を含めない場合 ]
+・jar ファイルの実行　その２ [ hw2.jar：依存するすべての .jar ファイルのうち、一部が命令に含まれていない ]
 
 bash-3.2$ java -cp ./clojure-1.10.3.jar:./hw2.jar hw.core
 
 　-> わんさかエラーが出る。
 
 
-・jar ファイルの実行　その３ [ hw2.jar ]
+・jar ファイルの実行　その３ [ hw2.jar：依存するすべての .jar ファイルが命令に含まれている ]
 
 bash-3.2$ java -cp ./clojure-1.10.3.jar:./spec.alpha-0.2.194.jar:./core.specs.alpha-0.2.56.jar:./hw2.jar hw.core
 Hello, world!!
@@ -172,20 +179,20 @@ Hello, world!!
 
 　〜ポイント〜
 
-１．パス指定に ~classes/ を含めないでパッケージングする必要がある。 
+１．jar ファイルの生成する際には、class ファイルパスの指定に */classes/ を含めないでパッケージングする必要がある。 
 ２．上記「１」を実現するには、.mf ファイルを手書きするか、別途調達する必要がある。
-３．依存関係を含めたうえで実行する必要がある。
+３．依存する .jar ファイルを、すべて命令のオプションに含めて実行する必要がある。
 
-４．実行できた。…けど、命令が長すぎるよ！
+４．命令を実行できた。…けれど、長すぎるなぁ。
 
 ====================
 
-・jar ファイル生成　その３　[ hw3.jar：実行時の命令をシンプルにしたい。 ]
-
 ・MANIFEST.MF を変更
-　依存する .jar を「Class-Path」で指定する。
-　その指定方法でハマっていた。相対パスは hw3.jar 生成処理を実行する場所を基準にする。
-　依存する .jar ファイルは、半角スペース文字で区切る。
+　依存する .jar を「Class-Path」で指定する。その指定方法でハマっていた。
+
+　１．依存する .jar ファイルが複数ある場合、半角スペース文字で区切る。
+　２．.jar の場所をあらわす相対パスは、hw3.jar ファイルの生成命令を実行する場所を基準にする。
+ 　 MANIFEST.MF の場所からから見てここにある〜、という記述にしないこと。
 
 bash-3.2$ cat ./META-INF/MANIFEST.MF
 Manifest-Version: 1.0
@@ -193,10 +200,15 @@ Created-By: 13.0.1 (Oracle Corporation)
 Main-Class: hw.core
 Class-Path: ./clojure-1.10.3.jar ./spec.alpha-0.2.194.jar ./core.specs.alpha-0.2.56.jar
 
+　-> 末尾の行で、「Class-Path」として、半角スペースを区切り文字にして実行時に必要な、依存する .jar ファイルをすべて記載している。
+
+
+・jar ファイル生成　その３　[ hw3.jar ]
+
 bash-3.2$ jar cmf ./META-INF/MANIFEST.MF hw3.jar -C ./build/classes hw
 
 
-・jar ファイルの実行　その４ [ hw3.jar ]
+・jar ファイルの実行　その４ [ hw3.jar：命令の実行をシンプルに ]
 
 bash-3.2$ java -jar ./hw3.jar 
 Hello, world!!
