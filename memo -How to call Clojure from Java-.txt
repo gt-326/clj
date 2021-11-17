@@ -1,0 +1,171 @@
+==========================
+
+How to call Clojure from Java
+
+==========================
+
+いまさらですが。
+Java から Clojure の関数を「メソッド」として呼び出す例をまとめたもの。
+
+　※ Win 環境の場合、実行時のクラスパスの区切り文字の変更してください（ ':' -> ';' ）。
+
+
+==========================
+
+[ 作業前の状態 ]
+
+hw
+├── build
+│   └── classes
+├── clojure-1.10.3.jar
+├── core.specs.alpha-0.2.56.jar
+├── spec.alpha-0.2.194.jar
+└── src
+    ├── clj
+    │   └── hw
+    │       └── core.clj
+    └── java
+        └── com
+            └── domain
+                └── Caller.java
+
+--------------------------
+
+[ src/clj/hw/core.clj ]
+
+(ns hw.core
+  (:gen-class
+   :name hw.core
+   :methods [
+　　　　　　　;; インスタンスメソッド
+　　　　　　　;;　[メソッド名 [引数の型] 戻り値の型]
+             [instance_foo [String] String]
+
+　　　　　　　;; スタティックメソッド　
+　　　　　　　;; メタデータで static 指示する。[メソッド名 [引数の型] 戻り値の型]
+             #^{:static true} [static_foo [String] String]
+
+　　　　　　]))
+
+(defn fnc_foo
+  [x]
+  (str "Hello, " x))
+
+(defn -static_foo
+  [x]
+  (str "Hello, " x " from static method."))
+
+;; 関数ではなく、インスタンスメソッドとして呼び出されるには
+;; 第１引数に this と指定しなきゃいけないみたい。
+
+(defn -instance_foo
+  ([x] (-instance_foo nil x))
+  ([this x]
+　  (str (fnc_foo x) " from instance method.")))
+
+(defn -main [& args]
+　(let [name (first args)]
+  　(println (-static_foo name))
+
+　　;; 関数として呼び出している。
+　　(println (-instance_foo name))
+　　(println (fnc_foo name))))
+
+--------------------------
+
+[ src/java/com/domain/Caller.clj ]
+
+package com.domain;
+
+import hw.core;
+
+public class Caller {
+
+    public static void main(String[] args) {
+
+　　    // method: static
+  　　  System.out.println("greeting 1: " + core.static_foo("A"));
+　
+　　    // method: instance
+  　　  core c  = new core();
+    　　System.out.println("greeting 2: " + c.instance_foo("B"));
+
+    }
+}
+
+==========================
+
+・repl 実行
+bash-3.2$ java -cp ./src/clj:./clojure-1.10.3.jar:./spec.alpha-0.2.194.jar:./core.specs.alpha-0.2.56.jar clojure.main
+
+　-> ちゃんと ./src/clj を記載しないと require できないので注意。
+
+
+・コンパイルを実行するための準備　その１
+user=> (require 'hw.core)
+nil
+
+
+・コンパイルを実行するための準備　その２（出力先のパスを変更する）
+user=> *compile-path*
+"classes"
+user=> (set! *compile-path* "build/classes")
+"build/classes"
+
+
+・repl 環境でコンパイル
+user=> (compile 'hw.core)
+hw.core
+
+
+・生成された class ファイルの実行
+bash-3.2$ java -cp ./build/classes:./clojure-1.10.3.jar:./spec.alpha-0.2.194.jar:./core.specs.alpha-0.2.56.jar hw.core gima326
+Hello, gima326 from static method.
+Hello, gima326 from instance method.
+Hello, gima326
+
+==========================
+
+・Clojure を呼び出す側の Java をコンパイル
+
+bash-3.2$ javac -d build/classes -cp ./build/classes:./clojure-1.10.3.jar:./spec.alpha-0.2.194.jar:./core.specs.alpha-0.2.56.jar ./src/java/com/domain/Caller.java
+
+
+・Java の実行（Clojure 呼び出し）
+
+bash-3.2$ java -cp ./build/classes:./clojure-1.10.3.jar:./spec.alpha-0.2.194.jar:./core.specs.alpha-0.2.56.jar com.domain.Caller
+greeting 1: Hello, A from static method.
+greeting 2: Hello, B from instance method.
+
+==========================
+
+[ 作業後の状態 ]
+
+hw
+├── build
+│   └── classes
+│       ├── com
+│       │   └── domain
+│       │       └── Caller.class
+│       └── hw
+│           ├── core$_instance_foo.class
+│           ├── core$_main.class
+│           ├── core$_static_foo.class
+│           ├── core$fn__158.class
+│           ├── core$fnc_foo.class
+│           ├── core$loading__6737__auto____156.class
+│           ├── core.class
+│           └── core__init.class
+├── clojure-1.10.3.jar
+├── core.specs.alpha-0.2.56.jar
+├── spec.alpha-0.2.194.jar
+└── src
+    ├── clj
+    │   └── hw
+    │       └── core.clj
+    └── java
+        └── com
+            └── domain
+                └── Caller.java
+
+==========================
