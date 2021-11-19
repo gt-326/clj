@@ -160,6 +160,9 @@ Main-Class: hw.core
 
 　　-> hw.jar のときのパス "build/classes/hw/" から "build/" が削られている。
 
+　　bash-3.2$ jar cmf META-INF/MANIFEST.MF hw2.jar -C build hw
+　　build/hwというファイルまたはディレクトリはありません
+
 
 bash-3.2$ jar cmf META-INF/MANIFEST.MF hw2.jar -C build/classes hw
 
