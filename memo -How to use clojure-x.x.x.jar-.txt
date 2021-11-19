@@ -138,6 +138,29 @@ Main-Class: hw.core
 
 
 ・jar ファイルの生成　その２　[ hw2.jar ]
+
+　こんな挙動をするんだな、と。
+
+　・ディレクトリ指定に誤りがある（ "hello/world" ）。
+　　bash-3.2$ jar cmf META-INF/MANIFEST.MF hw2.jar -C build/classes hello/world
+　　build/classes/hello/worldというファイルまたはディレクトリはありません
+
+　・パスの一部を削る（ "classes/hw" ）。
+　　bash-3.2$ jar cmf META-INF/MANIFEST.MF hw2.jar -C build classes/hw
+　　bash-3.2$ jar tf hw2.jar
+　　META-INF/
+　　META-INF/MANIFEST.MF
+　　classes/hw/
+　　classes/hw/core$fn__156.class
+　　classes/hw/core$foo.class
+　　classes/hw/core$loading__6737__auto____154.class
+　　classes/hw/core__init.class
+　　classes/hw/core.class
+　　classes/hw/core$_main.class
+
+　　-> hw.jar のときのパス "build/classes/hw/" から "build/" が削られている。
+
+
 bash-3.2$ jar cmf META-INF/MANIFEST.MF hw2.jar -C build/classes hw
 
 　-> 末尾に "hw" が付いていることに注意。
@@ -154,8 +177,8 @@ hw/core__init.class
 hw/core.class
 hw/core$_main.class
 
-　-> パスに build/classes/ が含まれていない。
-　-> classesフォルダを含まない形でパッケージングしている。
+　-> パスに "build/classes/" が含まれていない。
+　-> classes フォルダを含まない形でパッケージングしている。
 　
  -> このパッケージングのちがい（ hw.jar、hw2.jar ）がどのような結果をもたらすのか、確認しよう。
  
