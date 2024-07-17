@@ -10,4 +10,4 @@
 
 　・機械学習ってどんなもんなのか
 
-「オセロ」（JS 版）[ https://gt-326.github.io/clj/reversi/docs/reversi.html ]
+「オセロ」（JS 版）[ https://gt-326.github.io/clj/reversi.html ]
