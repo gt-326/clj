@@ -1,0 +1,12 @@
+Clojure でオセロを作るなかで、いろいろ学べたらな、と。
+
+以下のような事柄に触れるつもり。
+
+　・Git の使い方（まだ怖い）
+　・柔軟な設計、ナウい開発手法（TDD の実践など）
+　・「原則、パターン、実践」の実践（SOLID って、ただの念仏じゃないよね？）
+　・機械学習ってどんなもんなのか
+
+https://github.com/gt-326/clj/tree/master/reversi
+
+「正誤表」[ https://gt-326.github.io/clj/reversi/docs/reversi.html ]
