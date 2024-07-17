@@ -36,8 +36,8 @@
          var WEIGHTS = [
              // 4
              [[  30, -12, -12,  30 ],
-              [  -12,  0,   0, -12 ],
-              [  -12,  0,   0, -12 ],
+              [ -12,   0,   0, -12 ],
+              [ -12,   0,   0, -12 ],
               [  30, -12, -12,  30 ]],
 
              // 6
@@ -107,8 +107,12 @@
 
          function foo (obj) {
 
-             IDX = obj.selectedIndex;
+             IDX = document.getElementById("size").selectedIndex;
              SIZE = SIZES[IDX];
+
+//             IDX = obj.selectedIndex;
+//             SIZE = SIZES[IDX];
+
              WEIGHT_DATA = WEIGHTS[IDX];
 
              var tbl = document.getElementById("board");
@@ -124,7 +128,14 @@
 
          function init() {
 
+             IDX = document.getElementById("size").selectedIndex;
+             SIZE = SIZES[IDX];
+             WEIGHT_DATA = WEIGHTS[IDX];
+
              var board = getElementById(document, "board");
+
+//             alert(document.getElementById("size").selectedIndex);
+//             SIZE = 4;
 
              for (var i = 0; i < SIZE; i++) {
                  // html 上に、tr を生成する
@@ -286,6 +297,7 @@
                          var score = calcWeightData (tmpData);
 
                          if (score > highScore) {
+			                // 重み付けにもとづいて、最良の手を保持する
                              highScore = score;
                              px = x;
                              py = y;
@@ -295,7 +307,7 @@
              }
 
              if (highScore > -1000) {
-
+　　　　　　　　　　// 最良の手があれば、それを適用する
                  fillStones (px, py, WHITE);
              }
          }
@@ -391,7 +403,7 @@
 
          // (i, j) に駒を置いたときに、(dx, dy) 方向で駒を挟めるか？
 
-         function getFlipCellsOneDir (i, j, dx, dy, color) {
+	  function getFlipCellsOneDir (i, j, dx, dy, color) {
 
              var flipped = [];
 
