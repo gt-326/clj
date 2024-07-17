@@ -21,3 +21,6 @@ Clojure でオセロを作るなかで、いろいろ学べたらな、と。
 　
 　以下のサイトを参考にして進めていくつもり
 　[ http://www.es-cube.net/es-cube/reversi/sample/index.html ]
+
+　・関数「Board_Clear」を、定数を使うことで簡素化
+　・構造体「_Board」のフィールドの用途、意図が不明（Stack、*Sp）
