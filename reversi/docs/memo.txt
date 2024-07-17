@@ -19,3 +19,5 @@ Clojure でオセロを作るなかで、いろいろ学べたらな、と。
 　『関数型デザイン』（Rovert C. Martin 著）をざっと読み終えたのが数週前。
 　「・・・で、つぎ何しようか？」という状態。
 　
+　以下のサイトを参考にして進めていくつもり
+　[ http://www.es-cube.net/es-cube/reversi/sample/index.html ]

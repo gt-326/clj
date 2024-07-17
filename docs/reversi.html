@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Reversi</title>
+        <meta charset="UTF-8">
+        <style>
+         #board {
+             background-color: #55555;
+         }
+
+         td.cell {
+             background-color: green;
+             width: 60px;
+             height: 60px;
+             margin: 2px;
+             font-size: 45px;
+             text-align: center;
+         }
+
+         td.BLACK {
+             color: black;
+         }
+
+         td.WHITE {
+             color: white;
+         }
+
+        </style>
+        <script>
+         "use strict";
+
+         //==============
+
+         var SIZES = [4, 6, 8];
+
+         var WEIGHTS = [
+             // 4
+             [[  30, -12, -12,  30 ],
+              [  -12,  0,   0, -12 ],
+              [  -12,  0,   0, -12 ],
+              [  30, -12, -12,  30 ]],
+
+             // 6
+             [[  30, -12,   0,   0, -12,  30 ],
+              [ -12, -15,  -3,  -3, -15, -12 ],
+              [   0,  -3,   0,   0,  -3,   0 ],
+              [   0,  -3,   0,   0,  -3,   0 ],
+              [ -12, -15,  -3,  -3, -15, -12 ],
+              [  30, -12,   0,   0, -12,  30 ]],
+
+             // 8
+             [[  30, -12,   0,  -1,  -1,   0, -12,  30 ],
+              [ -12, -15,  -3,  -3,  -3,  -3, -15, -12 ],
+              [   0,  -3,   0,  -1,  -1,   0,  -3,   0 ],
+              [  -1,  -3,  -1,  -1,  -1,  -1,  -3,  -1 ],
+              [  -1,  -3,  -1,  -1,  -1,  -1,  -3,  -1 ],
+              [   0,  -3,   0,  -1,  -1,   0,  -3,   0 ],
+              [ -12, -15,  -3,  -3,  -3,  -3, -15, -12 ],
+              [  30, -12,   0,  -1,  -1,   0, -12,  30 ]]
+         ];
+
+         var IDX = 0;
+         var SIZE = SIZES[IDX];
+         var WEIGHT_DATA = WEIGHTS[IDX];
+
+         //==============
+
+         var GREEN = 0;
+         var BLACK = 1;
+         var WHITE = 2;
+
+         var myTurn = false;
+
+         var DATA = [];
+
+         //==============
+
+         var getElementById =
+             (doc, name) => {
+                 return doc.getElementById(name);
+             };
+
+         var createElement =
+             (doc, name) => {
+                 return doc.createElement(name);
+             };
+
+         // 盤面のセルクリック時のコールバック関数
+
+         function clicked (color) {
+             return (e) => {
+
+                 // グローバル変数「myTurn」を除きたい
+                 if (!myTurn) {
+                     return;
+                 }
+
+                 var id = e.target.id;
+
+                 fillStones(parseInt(id.charAt(4)),
+                            parseInt(id.charAt(5)),
+                            color);
+                 };
+             };
+
+         //==============
+
+         function foo (obj) {
+
+             IDX = obj.selectedIndex;
+             SIZE = SIZES[IDX];
+             WEIGHT_DATA = WEIGHTS[IDX];
+
+             var tbl = document.getElementById("board");
+
+             // 行削除
+             while( tbl.rows[ 0 ] ) tbl.deleteRow( 0 );
+
+             // 攻守入れ替え
+             //myTurn = !myTurn;
+
+             init();
+         }
+
+         function init() {
+
+             var board = getElementById(document, "board");
+
+             for (var i = 0; i < SIZE; i++) {
+                 // html 上に、tr を生成する
+                 var tr = createElement(document, "tr");
+
+                 DATA[i] = [ 0, 0, 0, 0, 0, 0, 0, 0 ];
+
+                 for (var j = 0; j < SIZE; j++) {
+                     // html 上に、td を生成する
+                     var td = createElement(document, "td");
+
+                     td.onclick = clicked(BLACK);
+                     td.className = "cell";
+                     td.id = "cell" + i + j;
+
+                     // がちゃがちゃ動かないように全角文字を置いている
+                     td.textContent = "　";
+
+                     tr.appendChild(td);
+                 }
+                 board.appendChild(tr);
+             }
+
+             var a = (SIZE / 2) - 1;
+             var b = (SIZE / 2);
+
+             put(a, a, BLACK);
+             put(b, b, BLACK);
+             put(a, b, WHITE);
+             put(b, a, WHITE);
+
+             update();
+         }
+
+         function cntStones () {
+
+             var numWhite = 0
+             var numBlack = 0
+
+             for (var x=0; x < SIZE; x++) {
+                 for (var y=0; y < SIZE; y++) {
+
+                     var color = DATA[x][y];
+
+                     if (WHITE == color) {
+                         numWhite++;
+
+                     } else if (BLACK == color) {
+                         numBlack++;
+                     }
+
+                 }
+             }
+
+             // 表示
+             document.getElementById("numWhite").textContent = numWhite;
+             document.getElementById("numBlack").textContent = numBlack;
+
+             return numWhite + numBlack;
+         }
+
+         function update () {
+
+             var blackFlip = canFlip(BLACK);
+             var whiteFlip = canFlip(WHITE);
+
+             var stonesCnt = cntStones();
+
+             var msg = "";
+
+             if ((!blackFlip && !whiteFlip) ||
+                 ((SIZE * SIZE) == stonesCnt)) {
+                 msg = "GaveOver";
+
+             } else if (!blackFlip) {
+                 myTurn = false;
+                 msg = "skip BLACK";
+
+             } else if (!whiteFlip) {
+                 myTurn = true;
+                 msg = "skip WHITE";
+
+             } else {
+                 myTurn = !myTurn;
+
+             }
+
+             // メッセージ
+             showMessage(msg);
+
+             // コンピュータ考え中
+             if (!myTurn) {
+                 setTimeout(think, 1000);
+             }
+         }
+
+         function showMessage (msg) {
+
+             document.getElementById("message").textContent = msg;
+
+             setTimeout(function () {
+                 document.getElementById("message").textContent = "";
+             }, 2000);
+         }
+
+         function fillStones (i, j, color) {
+
+             // 始点〜終点の間にある石を取得する
+             var flipped = getFlipCells(i, j, color);
+
+             if (flipped.length > 0) {
+                 // 始点の石
+                 put(i, j, color);
+
+                 // 終点未満までの石
+                 for(var k = 0; k < flipped.length; k++){
+
+                     put(flipped[k][0], flipped[k][1], color);
+
+                 }
+
+                 update();
+             }
+         }
+
+         function put (i, j, color) {
+             var c = document.getElementById("cell" + i + j);
+
+             c.textContent = "●";
+             c.className = "cell " + ((color == BLACK) ? "BLACK" : "WHITE");
+             DATA[i][j] = color;
+         }
+
+         // コンピュータ思考関数
+
+         function think (){
+
+             var highScore = -1000;
+             var px = -1;
+             var py = -1;
+
+             for (var x=0; x < SIZE; x++) {
+                 for (var y=0; y < SIZE; y++) {
+
+                     var tmpData = copyData();
+                     var flipped = getFlipCells(x, y, WHITE);
+
+                     if (flipped.length > 0) {
+
+                         for (var i = 0; i < flipped.length; i++) {
+
+                             var p = flipped[i][0];
+                             var q = flipped[i][1];
+
+                             tmpData[p][q] = WHITE;
+                             tmpData[x][y] = WHITE;
+                         }
+
+                         var score = calcWeightData (tmpData);
+
+                         if (score > highScore) {
+                             highScore = score;
+                             px = x;
+                             py = y;
+                         }
+                     }
+                 }
+             }
+
+             if (highScore > -1000) {
+
+                 fillStones (px, py, WHITE);
+             }
+         }
+
+
+         // 重みづけ計算
+
+         function calcWeightData (tmpData) {
+
+             var score = 0;
+
+             for (var x=0; x < SIZE; x++) {
+                 for (var y=0; y < SIZE; y++) {
+
+                     if (WHITE == tmpData[x][y]) {
+                         score += WEIGHT_DATA[x][y];
+
+                     }
+                 }
+             }
+
+             return score;
+         }
+
+         // 駒テーブルデータをコピー
+
+         function copyData () {
+
+             var tmpData = [];
+
+             for (var x=0; x < SIZE; x++) {
+
+                 tmpData[x] = [];
+
+                 for (var y=0; y < SIZE; y++) {
+
+                     tmpData[x][y] = DATA[x][y];
+
+                 }
+             }
+
+             return tmpData;
+         }
+
+         // 挟める駒があるか？
+
+         function canFlip (color) {
+
+             for (var x=0; x < SIZE; x++) {
+                 for (var y=0; y < SIZE; y++) {
+
+                     var flipped = getFlipCells (x, y, color);
+
+                     if (flipped.length > 0) {
+                         return true;
+                     }
+                 }
+             }
+             return false;
+         }
+
+         // (i, j) に駒を置いたときに、駒を挟めるか？
+
+         function getFlipCells (i, j, color) {
+
+             var cell_color = DATA[i][j];
+
+             if((cell_color == BLACK) || (cell_color == WHITE)) {
+                 return [];
+             }
+
+             // 相手を挟めるか？
+
+             var dirs = [[ -1, -1 ], [  0, -1 ],
+                         [  1, -1 ], [ -1,  0 ],
+                         [  1,  0 ], [ -1,  1 ],
+                         [  0,  1 ], [  1,  1 ]];
+
+             var rslt = [];
+
+             for (var p=0; p < dirs.length; p++) {
+
+                 var flipped = getFlipCellsOneDir(i, j,
+                                                  dirs[p][0],
+                                                  dirs[p][1],
+                                                  color);
+
+                 rslt = rslt.concat(flipped);
+             }
+
+             return rslt;
+         }
+
+         // (i, j) に駒を置いたときに、(dx, dy) 方向で駒を挟めるか？
+
+         function getFlipCellsOneDir (i, j, dx, dy, color) {
+
+             var flipped = [];
+
+             var x = i + dx;
+             var y = j + dy;
+
+             while (true) {
+
+                 if ((x < 0) || (x > (SIZE - 1)) ||
+                     (y < 0) || (y > (SIZE - 1)) || (GREEN == DATA[x][y])) {
+
+                     return [];
+
+                 } else if (color == DATA[x][y]) {
+
+                     // （挟み込んだ範囲の）終点に達した場合
+                     return flipped;
+                 }
+
+                 flipped.push([x, y]);
+
+                 // 一定方向（[i, j] -> [dx, dy]）に進み続ける
+                 x += dx;
+                 y += dy;
+             }
+         }
+
+        </script>
+    </head>
+    <body onload="init()">
+        レベル：<select id="size" onchange="foo(this);">
+        <option value="0">4</option>
+        <option value="1">6</option>
+        <option value="2">8</option>
+        </select><br><br>
+
+        黒（あなた）：<span id="numBlack"></span> 枚 <br>
+        白（コンピュータ）：<span id="numWhite"></span> 枚<br>
+
+        <table id="board"></table>
+        <h2 id="message"></h2>
+    </body>
+</html>
