@@ -6,6 +6,6 @@
   (testing "FIXME, I fail."
     (is (= 1 1))))
 
-(deftest foo-test
+(deftest foo2-test
   (testing ""
-    (is (= (foo "gima") "gima 3 3"))))
+    (is (= (foo2 "gima") "gima 3 3"))))
