@@ -25,6 +25,7 @@ Clojure でオセロを作るなかで、いろいろ学べたらな、と。
 　・関数「Board_Clear」を、定数を使うことで簡素化
 　・構造体「_Board」のフィールドの用途、意図が不明（Stack、*Sp）
 
+
 [240718]
 
 Board	*Board_New(void);
@@ -51,6 +52,7 @@ int		Board_CanPlay(const Board *self, int in_color);
 	int		Board_Y(int in_pos);
 	int		Board_OpponentColor(int in_color);
 
+
 [240724]
 
 // 石置けるか？
@@ -66,3 +68,10 @@ int		Board_CanPlay(const Board *self, int in_color);
 　　　// いいえ：
 　　　　// パス（番交代）
 　　　　// コマンド待ち
+
+
+[240731]
+
+「αβ法」の説明
+
+[ https://qiita.com/reika727/items/b027f4c20e2c946ea102 ]
