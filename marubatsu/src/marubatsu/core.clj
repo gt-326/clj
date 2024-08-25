@@ -11,8 +11,6 @@
     ([mode]
      (marubatsu-repl init_board mode))))
 
-
-
 (def turn [\1 \2])
 (def init_board [\0 \0 \0 \0 \0 \0 \0 \0 \0])
 (def board [(com/think2 init_board \1)

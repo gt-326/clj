@@ -232,20 +232,17 @@
    ))
 
 
-(defn marubatsu-repl2 [all_board mode t]
+(defn marubatsu-repl2 [all_board mode turn_start]
   (if (= mode 0)
     (do
       ;; print
-      ;;(print-board (conv-num b))
-      ;;(str (count all_board) " " mode " " turn)
-
-      (print-board (conv-num (:b (first all_board))))
-     ))
+      (print-board (conv-num (:b (first all_board))))))
 
   (loop [board all_board
-         turn t
-;;        log (list (:b (first all_board)))
-        idx (if (= mode 0)
+         turn turn_start
+         ;; undo 用の情報
+         log []
+         idx (if (= mode 0)
               (if (= turn \2)
                 ;; computer
                 (do
@@ -263,13 +260,49 @@
     ;; illegal, quit, undo
     ;;=====================
     (if (= 9 idx)
+      ;; quit
       (do
         (print-board (conv-num (:b (first board))))
         (println "\n[ quit : O lose ]"))
 
       (if (= 10 idx)
-        ;; undo（未着手）
-        1
+        ;; undo
+        (let [n (- (count log) 2)
+              flg (> 0 n)
+              ;; ベクタに変換しないと、ヘンな挙動になる
+              log_undo (if flg log (vec (take n log)))
+              board_undo
+              (if flg
+                board
+                ;; 完全読みから指した手を辿る
+                (first
+                 (reduce
+                  (fn [b {idx :i turn :t}]
+                    (cons
+                     (first
+                      (filter
+                       #(and
+                         (= idx (:i (first %)))
+                         (= turn (:t (first %))))
+
+                       (rest (first b))))
+                     b))
+                  (list all_board)
+                  log_undo)))
+              ]
+
+          ;; print
+          (println "\n[ undo ]")
+          (print-board (conv-num (:b (first board_undo))))
+
+          (print "\nEnter [ q, u, a1 - c3 ]> ")
+          (flush)
+
+          (recur
+           board_undo
+           turn
+           log_undo
+           (idxes (read-line))))
 
         (if (and
              (not (nil? idx))
@@ -288,7 +321,7 @@
             (recur
              board
              turn
-             ;;       (if flg_undo log_undo log)
+             log
              (idxes (read-line))))
 
           ;;======================
@@ -319,11 +352,13 @@
                 (println
                  (str
                   "\n[ the lead : "
-                  (if (= \1 t) "O" "X")
+                  (if (= \1 turn_start) "O" "X")
                   " ] "
 
                   "[ end : " (if (= \1 turn)
-                               "O" "X")  " wins ]")))
+                               "O" "X")  " wins ]")
+
+                 log))
 
               (if (nil? ((set board_current) \0))
                 ;; 終了２
@@ -333,12 +368,10 @@
                   (println
                    (str
                     "\n[ the lead : "
-                    (if (= \1 t) "O" "X")
-                    " ] "
-                    "[ end : draw ]")
-                   ))
+                    (if (= \1 turn_start) "O" "X")
+                    " ] [ end : draw ]")))
 
-                ;; 継続
+                ;; ゲーム継続
                 (do
                   (if (= mode 0)
                     (do
@@ -357,6 +390,13 @@
                   (recur
                    current
                    turn_new
+
+                   ;; undo 用の情報
+                   (conj log
+                         {:i idx_current
+                          ;; 相手の手番を設定する
+                          :t ([\1 \2] (- 2 (Integer/parseInt (str turn))))
+                          })
 
                    (if (and
                         (= mode 0)
