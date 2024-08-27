@@ -16,10 +16,21 @@
 (def board [(com/think2 init_board \1)
             (com/think2 init_board \2)])
 
+(def board2 [(com/think3 init_board \1)
+            (com/think3 init_board \2)])
+
 (defn play2
   ([] (play2 0))
   ([mode]
    (let [turn_int (rand-int 2)]
 
      (marubatsu-repl2 (board turn_int) mode (turn turn_int))
+     )))
+
+(defn play3
+  ([] (play3 0))
+  ([mode]
+   (let [turn_int (rand-int 2)]
+
+     (marubatsu-repl3 (board2 turn_int) mode (turn turn_int))
      )))
