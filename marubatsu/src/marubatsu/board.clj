@@ -61,6 +61,7 @@
 
 (defn marubatsu-repl
   ([b mode] (marubatsu-repl b mode ([\1 \2] (rand-int 2))))
+
   ([b mode t]
    (if (= mode 0)
      (do
@@ -196,12 +197,12 @@
                      (print-board (conv-num board_new))
 
                      (if (= turn_new \1)
-                         (do
-                           (print "\nEnter [ q, u, a1 - c3 ]> ")
-                           (flush))
-                         (do
-                           (println "\n[ computer's turn ]"))
-                         )))
+                       (do
+                         (print "\nEnter [ q, u, a1 - c3 ]> ")
+                         (flush))
+                       (do
+                         (println "\n[ computer's turn ]"))
+                       )))
 
                  ;; turn and wait cmd
                  (recur
@@ -231,7 +232,6 @@
          )))
    ))
 
-
 (defn marubatsu-repl2 [all_board mode turn_start]
   (if (= mode 0)
     (do
@@ -243,17 +243,17 @@
          ;; undo 用の情報
          log []
          idx (if (= mode 0)
-              (if (= turn \2)
-                ;; computer
-                (do
-                  (println "\n[ computer's turn ]"))
+               (if (= turn \2)
+                 ;; computer
+                 (do
+                   (println "\n[ computer's turn ]"))
 
-                ;; human
-                (do
-                  (print "\nEnter [ q, u, a1 - c3 ]> ")
-                  (flush)
-                  ;; 入力値を idx に変換する
-                  (idxes (read-line)))))
+                 ;; human
+                 (do
+                   (print "\nEnter [ q, u, a1 - c3 ]> ")
+                   (flush)
+                   ;; 入力値を idx に変換する
+                   (idxes (read-line)))))
          ]
 
     ;;=====================
@@ -356,9 +356,7 @@
                   " ] "
 
                   "[ end : " (if (= \1 turn)
-                               "O" "X")  " wins ]")
-
-                 log))
+                               "O" "X")  " wins ]")))
 
               (if (nil? ((set board_current) \0))
                 ;; 終了２
@@ -415,3 +413,175 @@
                      ))))
               )))))
     ))
+
+;;========================
+
+(defn disp_rslt [board msg]
+  (do
+    ;; print
+    (print-board (conv-num board))
+    (println msg)))
+
+(defn conv_input_to_idx
+  ([] (conv_input_to_idx nil nil))
+  ([board status]
+   (do
+     ;; print
+     (if status
+       (println (str "\n[ " status " ]")))
+
+     (if board
+       (print-board (conv-num board)))
+
+     (print "\nEnter [ q, u, a1 - c3 ]> ")
+     (flush)
+     ;; 入力値を idx に変換する
+     (idxes (read-line)))))
+
+(defn get_idx [mode turn boardPrint data]
+  (do
+    (if (= mode 0)
+      (do
+        ;; print
+        (print-board (conv-num boardPrint))
+
+        (if (= turn \2)
+          ;; computer
+          (println "\n[ computer's turn ]"))))
+
+    (if (and
+         (= mode 0)
+         (= turn \1))
+
+      ;; human
+      (conv_input_to_idx)
+
+      ;; computer
+      (if data
+        (:i
+         (first
+          (first
+           ;; スコアで並べる
+           (sort-by #((first %) :s) > data))))))
+    ))
+
+(defn rewind [board log]
+  (first
+   (reduce
+    (fn [b {idx :i turn :t}]
+      (cons
+       (first
+        (filter
+         #(and
+           (= idx (:i (first %)))
+           (= turn (:t (first %))))
+
+         (rest (first b))))
+       b))
+    ;; acc
+    (list board)
+    ;; keys
+    log)))
+
+(defn conv_to_OX [turn]
+  (if (= \1 turn) "O" "X"))
+
+;; (defn get_turn_next [turn]
+;;   ([\1 \2] (- 2 (Integer/parseInt (str turn)))))
+
+;;------------------------
+
+(defn marubatsu-repl3 [all_board mode turn_start]
+  (loop [board all_board
+         turn turn_start
+         idx (get_idx mode turn (:b (first all_board)) nil)
+         ;; undo 用の情報
+         log []]
+
+    ;;=====================
+    ;; illegal, quit, undo
+    ;;=====================
+    (if (= 9 idx)
+      ;; quit
+      (disp_rslt (:b (first board)) "\n[ quit : O lose ]")
+
+      (if (= 10 idx)
+        ;; undo
+        (let [n (- (count log) 2)
+              flg (> 0 n)
+              ;; ベクタに変換しないと、ヘンな挙動になる
+              log_undo (if flg log (vec (take n log)))
+              board_undo
+              (if flg
+                ;; 現在の状態のまま
+                board
+                ;; 特定の手まで、開始時点から「完全読み」を辿る
+                (rewind all_board log_undo))]
+
+          (recur
+           board_undo
+           turn
+           (conv_input_to_idx (:b (first board_undo)) "undo")
+           log_undo))
+
+        (if (and
+             ;; human
+             (= mode 0) (= turn \1)
+             (or
+              ;; [ a1 - c3 ] 以外の入力
+              (nil? idx)
+              ;; すでに埋まっているマス
+              (#{\1 \2} (nth (:b (first board)) idx))))
+
+          ;; illegal
+          (recur
+           board
+           turn
+           (conv_input_to_idx (:b (first board)) "illegal")
+           log)
+
+          ;;======================
+          ;; common
+          ;;======================
+          (let [board_rest (rest board)
+                current
+                (first
+                 (if idx
+                   ;; human
+                   (filter #(= idx (:i (first %))) board_rest)
+                   ;; computer
+                   (sort-by #((first %) :s) > board_rest)))
+
+                board_curr (:b (first current))
+                idx_curr (:i (first current))
+                turn_n (com/get_turn_next turn)]
+
+            ;; ゲーム終了判定
+            (if (win? board_curr #(= turn %))
+              ;; 終了１
+              (disp_rslt
+               board_curr
+               (str
+                "\n[ the lead : " (conv_to_OX turn_start) " ] "
+                "[ end : " (conv_to_OX turn) " wins ]"))
+
+              (if (nil? ((set board_curr) \0))
+                ;; 終了２
+                (disp_rslt
+                 board_curr
+                 (str
+                  "\n[ the lead : " (conv_to_OX turn_start) " ] "
+                  "[ end : draw ]"))
+
+                ;; turn and wait cmd
+                (recur
+                 current
+                 turn_n
+                 (get_idx mode turn_n board_curr (rest current))
+                 ;; undo 用の情報
+                 (conj log {:i idx_curr
+                            ;; 相手の手番を設定する
+                            :t turn_n})))
+
+              ))
+          )))))
