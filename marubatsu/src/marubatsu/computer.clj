@@ -126,6 +126,7 @@
 ;;=================
 
 ;; 強い（けれど、引き分けにしかならない）
+;; 自分の勝ちよりも、相手の王手への対応を優先するケースがみられる
 
 (defn think2
   ([board turn] (think2 board turn -1 -1))
@@ -146,6 +147,85 @@
         (first
          ;; 改良箇所
          (get_position_scores2
+          board
+          turn
+          (% :idx)))))
+
+     (get_board_child board turn)))
+   ))
+
+;;=================
+
+(defn get_turn_next [turn]
+  ([\1 \2] (- 2 (Integer/parseInt (str turn)))))
+
+(defn get_current_scores2 [board idxes my_stone]
+  (map
+   #(condp = (board %)
+      my_stone 2
+      \0 1
+      0)
+   idxes))
+
+(let [base_score [1 0 1 0 2 0 1 0 1]]
+  (defn get_position_scores3 [board turn i]
+    (for [position_info (get_lines_to_win board)
+          :let [idx (position_info :idx)
+
+                ;; 相手の王手をガードしたときのポイント
+                guard_score
+                (first
+                 (sort >
+                       (for [idxes (position_info :lines)]
+                         (apply + (get_guard_points
+                                   board
+                                   idxes
+                                   (get_turn_next turn))))))
+
+                ;; 取りうる手なかでの最高スコア
+                situation_score
+                (first
+                 (sort >
+                       (for [idxes (position_info :lines)]
+                         (apply + (get_current_scores2
+                                   board
+                                   idxes
+                                   turn)))))]
+
+          :when (= idx i)]
+
+      {:idx idx
+       :score (+ (base_score idx)
+                 ;; 相手の王手に対応したら：２ポイント
+                 (if (< 1 guard_score) 2 0)
+
+                 ;; 自分が勝ちになる手なら：３ポイント（以上）を加算する
+                 situation_score
+                 (if (< 4 situation_score) 3 0))}
+      )))
+
+;;-----------------
+
+;; 相手の王手への対応よりも、自分の勝ちを優先するよう改修した
+
+(defn think3
+  ([board turn] (think3 board turn -1 -1))
+  ([board turn idx score]
+   (concat
+    (list {:b board
+           :t turn
+           :i idx
+           :s score})
+    (map
+     #(think3
+       (% :board)
+       (get_turn_next turn)
+       (% :idx)
+
+       (:score
+        (first
+         ;; 改良箇所
+         (get_position_scores3
           board
           turn
           (% :idx)))))
