@@ -22,8 +22,7 @@ Enter [ q, u, a1 - c3 ]> b2
 3 # . . .
 
 [ computer's turn ]
-```
-```
+
     A B C
   # # # #
 1 # . . .
