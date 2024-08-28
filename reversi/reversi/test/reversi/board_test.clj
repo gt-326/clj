@@ -15,6 +15,10 @@
   (testing ""
     (is (= (board :sp) 3))))
 
+
+
+
+
 (deftest update-disk-test
   (testing ""
     (is (= (assoc-in init_disk [0 1] 100)
