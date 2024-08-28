@@ -196,12 +196,12 @@
 
       {:idx idx
        :score (+ (base_score idx)
-                 ;; 相手の王手に対応したら：２ポイント
-                 (if (< 1 guard_score) 2 0)
+                 ;; 相手の王手に対応したら：３ポイント
+                 (if (< 1 guard_score) 3 0)
 
-                 ;; 自分が勝ちになる手なら：３ポイント（以上）を加算する
+                 ;; 自分が勝ちになる手なら：４ポイント（以上）を加算する
                  situation_score
-                 (if (< 4 situation_score) 3 0))}
+                 (if (< 4 situation_score) 4 0))}
       )))
 
 ;;-----------------
