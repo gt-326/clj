@@ -34,3 +34,47 @@
 
      (marubatsu-repl3 (board2 turn_int) mode (turn turn_int))
      )))
+
+;;==========================
+
+(defn gen-board [n] (vec (repeat (* n n) \0)))
+
+(defn gen-win-pattern [n]
+  (concat
+   ;; yoko
+   (partition n (range (* n n)))
+
+   ;; tate
+   (for [i (range n)]
+     (map #(+ i %) (range 0 (* n n) n)))
+
+   ;; naname
+   (list
+    (range 0 (* n n) (inc n))
+    (range (dec n) (dec (* n n)) (dec n)))
+   ))
+
+(defn play4
+  ([] (play4 {}))
+  ([{mode :mode, size :size, :or {mode 0, size 3}}]
+
+   (if (not (contains? (set (range 3 26 2)) size))
+     ;; error
+     (println
+      (str "error: \n"
+           "valid sizes are " (vec (range 3 26 2))))
+
+     (let [win-pttrns (gen-win-pattern size)
+           init-board (gen-board size)
+           turn-char ([\1 \2] (rand-int 2))
+           board (com/think4 win-pttrns init-board turn-char)]
+
+       (marubatsu-repl4
+        win-pttrns
+        board
+        mode
+        turn-char
+        size)))
+))
+
+;;==========================

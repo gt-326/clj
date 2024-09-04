@@ -234,3 +234,144 @@
    ))
 
 ;;=================
+
+(defn get-lines-to-win2 [lines board]
+  (for [idx (canPutIdxes board)
+        :let [vec-positions
+              (for [l lines
+                    :when (some #(= % idx) l)] l)]]
+    {:idx idx :lines vec-positions}))
+
+(defn get-guard-points2 [board idxes opponent-stone]
+  (map
+   #(if (= opponent-stone (board %)) 1 0)
+   idxes))
+
+(defn get-current-scores3 [board idxes my-stone]
+  (map
+   #(condp = (board %)
+      my-stone 2
+      \0 1
+      0)
+   idxes))
+
+(defn get-position-scores4 [lines base-score size board turn i]
+  (for [position-info (get-lines-to-win2 lines board)
+        :let [idx (position-info :idx)
+
+              ;; 相手の王手をガードしたときのポイント
+              guard-score
+              (first
+               (sort >
+                     (for [idxes (position-info :lines)]
+                       (apply +
+                              ;; 改修箇所
+                              (get-guard-points2
+                               board
+                               idxes
+                               (get_turn_next turn))))))
+
+              ;; 取りうる手なかでの最高スコア
+              situation-score
+              (first
+               (sort >
+                     (for [idxes (position-info :lines)]
+                       (apply +
+                              ;; 改修箇所
+                              (get-current-scores3
+                               board
+                               idxes
+                               turn)))))]
+
+        :when (= idx i)]
+
+    ;;=== 要調整  ===
+
+    {:idx idx
+     :score (+ (base-score idx)
+               ;; 相手の王手に対応したら
+               ;;(if (< 1 guard-score) 3 0)
+               (if (<= (dec size) guard-score) size 0)
+
+               ;; 自分が勝ちになる手なら
+               situation-score
+               ;;(if (< 4 situation-score) 4 0)
+               (if (< (* 2 (dec size)) situation-score)
+                 (inc size) 0)
+               )}
+    ))
+
+;; 四つ角と中央にポイントを付与している
+
+(defn gen-base-score [n]
+  (loop [idxes (list
+                ;; 四つ角：１点
+                0
+                (dec n)
+                (- (* n n) n)
+                (dec (* n n))
+
+                ;; 中央：２点
+                (quot (* n n) 2)
+                (quot (* n n) 2))
+
+         score (vec (repeat (* n n) 0))]
+
+    (if (empty? idxes)
+      score
+      (recur
+       (rest idxes)
+       (update score (first idxes) inc)))))
+
+;; 斜めにポイントを付与している
+
+(defn gen-base-score2 [n]
+  (loop [idxes (concat
+                (range 0 (* n n) (inc n))
+                (range (dec n) (dec (* n n)) (dec n)))
+
+         score (vec (repeat (* n n) 0))]
+
+    (if (empty? idxes)
+      score
+      (recur
+       (rest idxes)
+       (update score (first idxes) inc)))))
+
+;;-----------------
+
+;; ボードサイズを可変長にするよう改修した
+
+(defn think4
+  ([win-patterns board turn]
+   (think4 win-patterns board turn -1 -1))
+
+  ([win-patterns board turn idx score]
+   (let [size (int (Math/sqrt (count board)))]
+     (concat
+      (list {:b board
+             :t turn
+             :i idx
+             :s score})
+      (map
+       #(think4
+         win-patterns
+         (% :board)
+         (get_turn_next turn)
+         (% :idx)
+
+         (:score
+          (first
+           ;; 改良箇所
+           (get-position-scores4
+            win-patterns
+            (gen-base-score2 size)
+            size
+            board
+            turn
+            (% :idx)))))
+
+       (get_board_child board turn))))
+   ))
+
+;;=================

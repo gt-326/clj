@@ -24,6 +24,7 @@
             "A3" 6
             "B3" 7
             "C3" 8
+
             "Q"  9
             "U"  10})
 
@@ -585,3 +586,326 @@
 
               ))
           )))))
+
+;;========================
+
+(defn disp-rslt3 [fnc-prt msg]
+  (do
+    ;; print
+    (fnc-prt)
+    (println msg)))
+
+(defn get-idx3 [fnc-prt fnc mode turn data]
+  (do
+    (if (= mode 0)
+      (do
+        ;; print
+        (fnc-prt)
+
+        (if (= turn \2)
+          ;; computer
+          (println "\n[ computer's turn ]"))))
+
+    (if (and
+         (= mode 0)
+         (= turn \1))
+
+      ;; human
+      ((fnc nil nil))
+
+      ;; computer
+      (if data
+        (:i
+         (first
+          (first
+           ;; スコアで並べる
+           (sort-by #((first %) :s) > data))))))
+    ))
+
+(defn win2? [win-pttrns board opr size]
+  (some
+   #(= size (count %))
+   (map
+    #(for [idx %
+           :let [stone (nth board idx)]
+           :when (opr stone)]
+       idx)
+    win-pttrns)))
+
+;;------------------------
+
+(defn char-range [start end]
+  (map char (range (int start) (inc (int end)))))
+
+(defn gen-line [head lst]
+  (reduce
+   (fn [acc c] (str acc c " "))
+   head
+   lst))
+
+;; カッコ悪いとこ
+
+(defn gen-frame [n]
+  (str
+   ;; [ 1st line    :     A B C ]
+   (gen-line "\n    " (take n (char-range \A \Z)))
+
+   ;; [ 2nd line    :   # # # # ]
+   (gen-line "\n  " (repeat (inc n) "#"))
+
+   ;; [ other lines : n # 0 0 0 ]
+   (apply str
+          (for [i (range 1 (inc n))]
+            (gen-line (str "\n" i " # ") (repeat n "%c"))))
+   "\n"))
+
+(defn gen-frame2 [n]
+  (apply str
+   `(
+     ;; [ 1st line    :     A B C ]
+     "\n    " ~@(interleave
+                 (take n (char-range \A \Z))
+                 (repeat n " "))
+
+     ;; [ 2nd line    :   # # # # ]
+     "\n  " ~@(repeat (inc n) "# ")
+
+     ;; [ other lines : n # 0 0 0 ]
+     ~@(for [i (range 1 (inc n))]
+         (apply str "\n" i " # " (repeat n "%c ")))
+
+     ;; 末尾
+     "\n")))
+
+(defn gen-frame3 [n]
+  (str
+   ;; [ 1st line    :     A B C ]
+   (apply str "\n    "
+          (interleave
+           (take n (char-range \A \Z))
+           (repeat n " ")))
+
+   ;; [ 2nd line    :   # # # # ]
+   (apply str "\n  "
+          (repeat (inc n) "# "))
+
+   ;; [ other lines : n # 0 0 0 ]
+   (apply str
+          (for [i (range 1 (inc n))]
+            (apply str "\n" i " # " (repeat n "%c "))))
+   ;; 末尾
+   "\n"))
+
+;; いちばん平易な書き方かな、と。
+
+(defn gen-frame4 [n]
+  (apply
+   str
+   (concat
+    ;; [ 1st line    :     A B C ]
+    "\n    " (interleave
+              (take n (char-range \A \Z))
+              (repeat n " "))
+
+    ;; [ 2nd line    :   # # # # ]
+    "\n  " (repeat (inc n) "# ")
+
+    ;; [ other lines : n # 0 0 0 ]
+    (for [i (range 1 (inc n))]
+      (apply str "\n" i " # " (repeat n "%c ")))
+
+    ;; 末尾
+    "\n")))
+
+(defn gen-frame4 [n]
+  (apply
+   str
+   (concat
+    ;; [ 1st line    :     A B C ]
+    "\n     " (interleave
+               (take n (char-range \A \Z))
+               (repeat n " "))
+
+    ;; [ 2nd line    :   # # # # ]
+    "\n   " (repeat (inc n) "# ")
+
+    ;; [ other lines : n # 0 0 0 ]
+    (for [i (range 1 (inc n))]
+      (apply str (format "\n%2d # " i) (repeat n "%c ")))
+
+    ;; 末尾
+    "\n")))
+
+(defn gen-idx-keys [n ch-s ch-e]
+  (apply concat
+         (for [i (range 1 (inc n))]
+           (for [ch (take n (char-range ch-s ch-e))]
+             (str ch i)))))
+
+;; カッコ悪いとこ、名前も未定
+
+(defn baz3 [n]
+  (list
+   (interleave (gen-idx-keys n \a \z) (iterate inc 0))
+   (interleave (gen-idx-keys n \A \Z) (iterate inc 0))
+
+   '("Q" -1 "q" -1 "U" -2 "u" -2)))
+
+(defn gen-maps [n]
+  (apply sorted-map
+   (apply concat
+          '("Q" -1 "q" -1 "U" -2 "u" -2)
+          (for [ [starg end] [[\a \z] [\A \Z]] ]
+            (interleave
+             (gen-idx-keys n starg end)
+             (iterate inc 0)))
+          )))
+
+;;------------------------
+
+(defn print-board2 [frame data]
+  (print
+   (apply
+    format
+    (cons frame data))))
+
+(defn conv-input-to-idx3
+  ([idx last-pos] (conv-input-to-idx3 idx last-pos nil nil))
+  ([idx last-pos fnc-prt status]
+   (do
+     ;; print
+     (if status
+       (println (str "\n[ " status " ]")))
+
+     (if fnc-prt
+       (fnc-prt))
+
+     (print (str "\nEnter [ q, u, a1 - " last-pos " ]> "))
+     (flush)
+
+     ;; 入力値を idx に変換する
+     (idx (read-line))
+     )))
+
+;;------------------------
+
+(defn marubatsu-repl4 [win-pttrns all-board mode turn-start size]
+
+  (let [;;idxes (baz3 size)
+        ;;idx (apply sorted-map (apply concat idxes))
+        idxes (gen-maps size)
+        pos-last (last (gen-idx-keys size \a \z))
+        fnc (fn [f s] #(conv-input-to-idx3 idxes pos-last f s))
+
+        frame (gen-frame4 size)
+        fnc-prt (fn [b] #(print-board2 frame (conv-num b)))]
+
+    ;; 処理本体
+
+    (loop [board all-board
+           turn turn-start
+           idx (get-idx3
+                (fnc-prt (:b (first all-board)))
+                fnc
+                mode
+                turn
+                nil)
+
+           ;; undo 用の情報
+           log []]
+
+      ;;=====================
+      ;; illegal, quit, undo
+      ;;=====================
+      (if (= -1 idx)
+        ;; quit
+        (disp-rslt3
+         (fnc-prt (:b (first board))) "\n[ quit : O lose ]")
+
+        (if (= -2 idx)
+          ;; undo
+          (let [n (- (count log) 2)
+                flg (> 0 n)
+                ;; ベクタに変換しないと、ヘンな挙動になる
+                log-undo (if flg log (vec (take n log)))
+                board-undo
+                (if flg
+                  ;; 現在の状態のまま
+                  board
+                  ;; 特定の手まで、開始時点から「完全読み」を辿る
+                  (rewind all-board log-undo))]
+
+            (recur
+             board-undo
+             turn
+             ((fnc (fnc-prt (:b (first board-undo))) "undo"))
+             log-undo))
+
+          (if (and
+               ;; human
+               (= mode 0) (= turn \1)
+               (or
+                ;; [ a1 - c3 ] 以外の入力
+                (nil? idx)
+                ;; すでに埋まっているマス
+                (#{\1 \2} (nth (:b (first board)) idx))))
+
+            ;; illegal
+            (recur
+             board
+             turn
+             ((fnc (fnc-prt (:b (first board))) "illegal"))
+             log)
+
+            ;;======================
+            ;; common
+            ;;======================
+            (let [board-rest (rest board)
+                  current
+                  (first
+                   (if idx
+                     ;; human
+                     (filter #(= idx (:i (first %))) board-rest)
+                     ;; computer
+                     (sort-by #((first %) :s) > board-rest)))
+
+                  board-curr (:b (first current))
+                  idx-curr (:i (first current))
+                  turn-n (com/get_turn_next turn)]
+
+              ;; ゲーム終了判定
+              (if (win2? win-pttrns board-curr #(= turn %) size)
+                ;; 終了１
+                (disp-rslt3
+                 (fnc-prt board-curr)
+                 (str
+                  "\n[ the lead : " (conv_to_OX turn-start) " ] "
+                  "[ end : " (conv_to_OX turn) " wins ]"))
+
+                (if (nil? ((set board-curr) \0))
+                  ;; 終了２
+                  (disp-rslt3
+                   (fnc-prt board-curr)
+                   (str
+                    "\n[ the lead : " (conv_to_OX turn-start) " ] "
+                    "[ end : draw ]"))
+
+                  ;; turn and wait cmd
+                  (recur
+                   current
+                   turn-n
+
+                   (get-idx3
+                    (fnc-prt board-curr)
+                    fnc
+                    mode
+                    turn-n
+                    (rest current))
+
+                   ;; undo 用の情報
+                   (conj log {:i idx-curr
+                              ;; 相手の手番を設定する
+                              :t turn-n})))
+
+                ))
+            ))))))
