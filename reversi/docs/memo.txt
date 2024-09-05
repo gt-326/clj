@@ -21,3 +21,57 @@ Clojure でオセロを作るなかで、いろいろ学べたらな、と。
 　
 　以下のサイトを参考にして進めていくつもり
 　[ http://www.es-cube.net/es-cube/reversi/sample/index.html ]
+
+　・関数「Board_Clear」を、定数を使うことで簡素化
+　・構造体「_Board」のフィールドの用途、意図が不明（Stack、*Sp）
+
+
+[240718]
+
+Board	*Board_New(void);
+void	Board_Delete(Board *self);
+
+void	Board_Clear(Board *self);
+
+	int		Board_Disk(const Board *self, int in_pos);
+	int		Board_CountDisks(const Board *self, int in_color);
+
+int		Board_Flip(Board *self, int in_color, int in_pos);
+	int		Board_Unflip(Board *self);
+
+	int		Board_CanFlip(const Board *self, int in_color, int in_pos);
+	int		Board_CountFlips(const Board *self, int in_color, int in_pos);
+
+void	Board_Copy(const Board *self, Board *out_board);
+	void	Board_Reverse(Board *self);
+
+int		Board_CanPlay(const Board *self, int in_color);
+
+	int		Board_Pos(int in_x, int in_y);
+	int		Board_X(int in_pos);
+	int		Board_Y(int in_pos);
+	int		Board_OpponentColor(int in_color);
+
+
+[240724]
+
+// 石置けるか？
+　// はい：
+　　// 状態変更
+　　// 石の数をカウント:z
+　　// 再描画
+　　// コマンド待ち
+
+　// いいえ：
+　　// ゲーム終了？
+　　　// はい：ゲーム終了
+　　　// いいえ：
+　　　　// パス（番交代）
+　　　　// コマンド待ち
+
+
+[240731]
+
+「αβ法」の説明
+
+[ https://qiita.com/reika727/items/b027f4c20e2c946ea102 ]
