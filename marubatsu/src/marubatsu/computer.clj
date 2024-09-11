@@ -375,3 +375,367 @@
    ))
 
 ;;=================
+
+;; 新ルール「一定時間経過すると、石が消滅する」を導入してみる
+
+(defn update-lives [lives]
+  (vec
+   (map #(if (zero? %) 0 (dec %)) lives)))
+
+(defn update-board [board lives num]
+  (loop [idx 0
+         l lives
+         b board]
+
+    (if (empty? l)
+      b
+      (recur
+       (inc idx)
+       (rest l)
+       (assoc b idx (if (= num (first l)) \0 (b idx)))))))
+
+(defn update-board2 [board lives fnc]
+  (loop [idx 0
+         l lives
+         b board]
+
+    (if (empty? l)
+      b
+      (recur
+       (inc idx)
+       (rest l)
+       (assoc b idx (if (fnc (first l) (b idx)) \0 (b idx)))))))
+
+(defn get-board-child2 [board lives life-max turn]
+  (loop [idxes (canPutIdxes board)
+         result '()]
+    (if (empty? idxes)
+      result
+      (recur
+       (rest idxes)
+       (conj result {:idx (first idxes)
+                     :board (assoc board (first idxes) turn)
+                     ;; 改修箇所
+                     :lives (assoc lives (first idxes) life-max)
+                     }))
+      )))
+
+;;-----------------
+
+;; 石が消える新ルールを導入したことで分かったが、
+;; 「つぎのターンでリーチになる」、そういう手があるので、
+;; それを検出するための関数群（foo、bar、baz は履歴として残している）。
+
+(defn foo [board lives turn]
+  (loop [idx 0
+         l lives]
+
+    (if (and
+         ;; life:2 でないと引っ掛からない
+         (= 2 (first l))
+         (= (board idx) turn))
+      idx
+      (if (empty? l)
+        nil
+        (recur (inc idx) (rest l))))
+    ))
+
+;; foo
+(defn search-vanishing-idx [board lives turn]
+  (loop [idx 0
+         l lives]
+
+    (if (and
+         ;; life:2 でないと引っ掛からない
+         (= 2 (first l))
+         (= (board idx) turn))
+      idx
+      (if (empty? l)
+        nil
+        (recur (inc idx) (rest l))))
+    ))
+
+;;-----------------
+
+(defn bar_ [board live pattern turn]
+
+  (let [vanishing-idx (foo board live turn)]
+
+    ;; 相手の石のうち、つぎのつぎのターンで消えるものがあるか？
+    (if (nil? vanishing-idx)
+      '()
+
+      ;; その石を含む、tate yoko naname をピックアップ
+      (filter
+       (fn [l] (some #(= vanishing-idx %) l))
+       pattern)
+      )
+    ))
+
+(defn bar [idx pattern]
+  ;; 相手の石のうち、つぎのつぎのターンで消えるものがあるか？
+  (if (nil? idx)
+    '()
+
+    ;; その石を含む、tate yoko naname をピックアップ
+    (filter
+     (fn [l] (some #(= idx %) l))
+     pattern)
+    ))
+
+(defn bar2 [idxes pattern]
+  (if (nil? (first idxes))
+    '()
+
+    ;; 最後の処理結果として、リストの先頭を取得する
+    (first
+     (reduce
+      (fn [pttrn idx]
+        ;; 処理結果を履歴として保持している
+        (cons
+         (filter
+          (fn [l] (some #(= idx %) l))
+          (first pttrn))
+         pttrn))
+
+      ;; acc
+      (list pattern)
+
+      ;; list
+      idxes))
+))
+
+(defn bar2-2 [idxes pattern]
+  (if (nil? (first idxes))
+    '()
+    (first
+     (reduce
+      (fn [pttrn idx]
+        (filter
+         (fn [l] (some #(= idx %) l))
+         pttrn))
+      ;; acc
+      pattern
+      ;; list
+      idxes))
+    ))
+
+(defn bar3 [list-idx pattern]
+  (loop [idxes list-idx
+         rslt pattern]
+
+    (if (empty? idxes)
+      rslt
+      (if (nil? (first idxes))
+        '()
+        (recur
+         (rest idxes)
+         (filter
+          ;;(fn [l] (some (fn [i] (= (first idxes) i)) l))
+          (fn [l] (some #(= (first idxes) %) l))
+          rslt))))))
+
+;; bar3
+(defn update-l [list-idx pattern]
+  (loop [idxes list-idx
+         rslt pattern]
+
+    (if (empty? idxes)
+      rslt
+      (if (nil? (first idxes))
+        '()
+
+        (recur
+         (rest idxes)
+         (filter
+          (fn [l] (some #(= (first idxes) %) l))
+          rslt))
+         ))))
+
+;;-----------------
+
+(defn baz [board lives pattern turn idx]
+  (let [vanishing-idx (foo board lives turn)
+
+        ;; ナイーブ
+        ;;idxes (bar vanishing-idx pattern)
+        ;;lines-new (filter (fn [l] (some #(= idx %) l)) idxes)
+
+        ;; シンプル（同じ関数を、必要な回数分呼び出している）
+        ;;idxes (bar vanishing-idx pattern)
+        ;;lines-new (bar idx idxes)
+
+        ;; reduce 版（不必要に過去の処理結果を保持する）
+        lines-new (bar2 [vanishing-idx idx] pattern)
+
+        ;; loop/recur 版（処理結果を上書きする）
+        ;;lines-new (bar3 [vanishing-idx idx] pattern)
+        ]
+
+    (some
+     ;; 自分の石：１、空白：１をリーチ対象とする
+     #(= 3 %)
+     (map
+      #(apply +
+              (get-current-scores3
+               ;; life:1 の自石を除いた状態
+               board
+               %
+               turn))
+      lines-new))
+    ))
+
+;; baz
+(defn has-reach? [size board turn lines]
+  (some
+   ;; ポイント
+   ;; [ 相手の石 ]＋[ 空白 ]＋( [ 自分の石 ]：n ）
+   #(= (* 2 (- size 2)) %)
+   (map
+    #(apply +
+            (get-current-scores3 board % turn))
+    lines)))
+
+(defn get-position-scores5
+  [lines base-score size board lives turn i]
+
+  (let [
+        ;; つぎに置く石（idx）と入れ替わりで消える life:1 の石
+        ;; それをないものとして、それぞれの手のスコアを計算する
+        board-next
+        (update-board2
+         board
+         lives
+         #(and (= %1 1) (= %2 turn)))
+
+        ;; 相手のターン
+        turn-next
+        (get_turn_next turn)
+
+        ;; 相手の消える石の idx を取得する
+        vanishing-idx
+        (search-vanishing-idx board lives turn-next)
+        ]
+
+    (for [position-info (get-lines-to-win2 lines board-next)
+          :let [idx (position-info :idx)
+
+                ;; 相手の王手をガードしたときのポイント
+                guard-score
+                (first
+                 (sort >
+                       (for [idxes (position-info :lines)]
+                         (apply +
+                                ;; 改修箇所
+                                (get-guard-points2
+                                 board
+                                 idxes
+                                 turn-next)))))
+
+                ;; 取りうる手なかでの最高スコア
+                situation-score
+                (first
+                 (sort >
+                       (for [idxes (position-info :lines)]
+                         (apply +
+                                ;; 改修箇所
+                                (get-current-scores3
+                                 ;; life:1 の自石を除いた状態
+                                 board-next
+                                 idxes
+                                 turn)))))
+
+                ;; リーチになるか？
+                lines-update
+                (update-l [vanishing-idx idx] lines)
+
+                reach-flg
+                (has-reach? size board-next turn-next lines-update)
+                ]
+
+          :when (= idx i)]
+
+      {:idx idx
+       :score (+ (base-score idx)
+                 ;; リーチポイント
+                 ;; 相手の王手に対応したときより低いポイントを設定する
+                 (if reach-flg (dec size) 0)
+
+                 ;; 相手の王手に対応したら
+                 ;; 自分の勝ちより低いポイントを設定する
+                 (if (<= (dec size) guard-score) size 0)
+
+                 ;; 自分が勝ちになる手なら
+                 situation-score
+                 (if (< (* 2 (dec size)) situation-score)
+                   (inc size) 0))
+       }
+      )))
+
+;;-----------------
+
+(defn think5
+  ([win-patterns board lives size turn]
+   (think5 win-patterns board lives size turn -1 -1))
+
+  ([win-patterns board lives size turn idx score]
+   (let [
+         ;; 1. dec lives
+         lives-new (update-lives lives)
+         ;; 2. update board
+         board-new (update-board board lives-new 0)
+         ;; 要調整：済
+         life-max (- (* size size) (dec size))
+         ]
+
+     (concat
+
+      ;; ※think4 までは、このハッシュマップデータには関数呼び出し時に
+      ;; 引数に渡された値（board、lives）を設定していたが、新ルール下
+      ;; では、それがデッドエンド状態になる原因になるみたい。
+
+      ;; 以下のように、更新した値（-new）を設定すると解消するみたい。
+
+      (list {:b ;;board
+                board-new
+             :t turn
+             :i idx
+             :s score
+
+             ;; 改修箇所
+             :l ;;lives
+                lives-new
+             })
+
+      ;; 再帰：
+      (map
+       #(think5
+         win-patterns
+         (% :board)
+
+         ;; 改修箇所
+         (% :lives)
+         size
+
+         (get_turn_next turn)
+         (% :idx)
+
+         (:score
+          (first
+           ;; 改修箇所
+           (get-position-scores5
+            win-patterns
+            (gen-base-score2 size)
+            size
+
+            ;; 改良箇所
+            board-new
+            lives-new
+
+            turn
+            (% :idx))))
+         )
+
+       (get-board-child2 board-new lives-new life-max turn))
+      ))
+   ))

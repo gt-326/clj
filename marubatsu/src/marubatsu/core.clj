@@ -79,7 +79,38 @@
 
 ;;==========================
 
-;;aaa
 ;; 新ルール「一定時間経過すると、石が消滅する」を導入してみる
 
-(defn play5 [] (str "play5"))
+(defn gen-lives [n] (vec (repeat (* n n) 0)))
+
+(defn play5
+  ([] (play5 {}))
+  ([{mode :mode, size :size, :or {mode 0, size 3}}]
+
+   (if (not (contains? (set (range 3 26 2)) size))
+     ;; error
+     (println
+      (str "error: \n"
+           "valid sizes are " (vec (range 3 26 2))))
+
+     (let [win-pttrns (gen-win-pattern size)
+           init-board (gen-board size)
+           turn-char ([\1 \2] (rand-int 2))
+
+           ;; 改良箇所
+           board-lives (gen-lives size)
+           board-perfect
+           (com/think5
+            win-pttrns init-board board-lives size turn-char)]
+
+       (marubatsu-repl5
+        win-pttrns
+        board-perfect
+        mode
+        turn-char
+        size)))
+   ))
+
+
+
+;;==========================

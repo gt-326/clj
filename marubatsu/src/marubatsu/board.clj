@@ -763,11 +763,15 @@
 
 ;;------------------------
 
-(defn print-board2 [frame data]
+(defn print-board2_ [frame data]
   (print
    (apply
     format
     (cons frame data))))
+
+(defn print-board2 [frame data]
+  (print
+   (apply format frame data)))
 
 (defn conv-input-to-idx3
   ([idx last-pos] (conv-input-to-idx3 idx last-pos nil nil))
@@ -909,3 +913,202 @@
 
                 ))
             ))))))
+
+
+;;========================
+
+(defn conv-num2 [info]
+  (loop [idx 0
+         life (:l info)
+         board (:b info)]
+
+    (if (empty? life)
+      board
+      (recur
+       (inc idx)
+       (rest life)
+       (assoc board idx
+              (if (zero? (first life))
+                ;; life:0 消える
+                \.
+
+                ;; 要調整：済
+                ;; 2 だと、相手の消える石（小文字）が表示されない
+                ;; 3 だと、自分と相手の消える石がともに表示される
+                ;; （どっちが先に消えるのか、分かりにくい。当然、自分の石のほうが先に消えるんだが…）
+
+                (if (< 2 (first life))
+                  (if (= \1 (board idx)) \O \X)
+                  (if (= \1 (board idx)) \o \x)))
+       ))
+      )))
+
+(defn random-choosing-from-bests [data]
+  (let [
+        ;; スコアでソートした先頭の手を取得する
+        best-choice
+        (first
+         (sort-by #((first %) :s) > data))
+
+        ;; 最高スコアを取得する
+        high-score (:s (first best-choice))
+
+        ;; 最高スコアを持つ、すべての手を取得する
+        bests
+        (vec (filter #(= high-score (:s (first %))) data))
+
+        ;; スコアが同じ場合、ランダムに手を選ぶ
+        idx (rand-int (count bests))
+        ]
+
+    ;; 最高スコアの手の要素 idx を返す
+    (:i (first (bests idx)))
+    ))
+
+(defn get-idx4 [fnc-prt fnc mode turn data]
+  (do
+    (if (= mode 0)
+      (do
+        ;; print
+        (fnc-prt)
+
+        (if (= turn \2)
+          ;; computer
+          (println "\n[ computer's turn ]"))))
+
+    (if (and
+         (= mode 0)
+         (= turn \1))
+
+      ;; human
+      ((fnc nil nil))
+
+      ;; computer
+      (if data
+        (random-choosing-from-bests data)))
+    ))
+
+;;------------------------
+
+(defn marubatsu-repl5 [win-pttrns all-board mode t-start size]
+
+  (let [idxes (gen-maps size)
+        pos-last (last (gen-idx-keys size \a \z))
+        fnc (fn [f s] #(conv-input-to-idx3 idxes pos-last f s))
+
+        frame (gen-frame4 size)
+        fnc-prt (fn [b] #(print-board2 frame (conv-num2 b)))
+        ]
+
+    (loop [board all-board
+           turn t-start
+           idx (get-idx4
+                (fnc-prt (first all-board))
+                fnc
+                mode
+                turn
+                nil)
+
+           ;; undo 用の情報
+           log []]
+
+      ;;=====================
+      ;; illegal, quit, undo
+      ;;=====================
+      (if (= -1 idx)
+        ;; quit
+        (disp-rslt3
+         (fnc-prt (first board))
+         "\n[ quit : O lose ]")
+
+        (if (= -2 idx)
+          ;; undo
+          (let [n (- (count log) 2)
+                flg (> 0 n)
+                ;; ベクタに変換しないと、ヘンな挙動になる
+                log-undo (if flg log (vec (take n log)))
+                board-undo
+                (if flg
+                  ;; 現在の状態のまま
+                  board
+                  ;; 特定の手まで、開始時点から「完全読み」を辿る
+                  (rewind all-board log-undo))]
+
+            (recur
+             board-undo
+             turn
+             ((fnc (fnc-prt (first board-undo)) "undo"))
+             log-undo))
+
+          (if (and
+               ;; human
+               (= mode 0) (= turn \1)
+               (or
+                ;; [ a1 - c3 ] 以外の入力
+                (nil? idx)
+                ;; すでに埋まっているマス
+                (#{\1 \2} (nth (:b (first board)) idx))))
+
+            ;; illegal
+            (recur
+             board
+             turn
+             ((fnc (fnc-prt (first board)) "illegal"))
+             log)
+
+            ;;======================
+            ;; common
+            ;;======================
+            (let [turn-n (com/get_turn_next turn)
+
+                  board-rest (rest board)
+
+                  current
+                  (first
+                   (if idx
+                     ;; human
+                     (filter #(= idx (:i (first %))) board-rest)
+                     ;; computer
+                     (sort-by #((first %) :s) > board-rest)))
+
+                  board-curr (:b (first current))
+                  idx-curr (:i (first current))]
+
+              ;; ゲーム終了判定
+              (if (win2? win-pttrns board-curr #(= turn %) size)
+                ;; 終了１
+                (disp-rslt3
+                 (fnc-prt (first current))
+                 (str
+                  "\n[ the lead : " (conv_to_OX t-start) " ]"
+                  " [ end : " (conv_to_OX turn) " wins ]"))
+
+                (if (nil? ((set board-curr) \0))
+                  ;; 終了２
+                  (disp-rslt3
+                   (fnc-prt (first current))
+                   (str
+                    "\n[ the lead : " (conv_to_OX t-start) " ]"
+                    " [ end : draw ]"))
+
+                  ;; turn and wait cmd
+                  (recur
+                   current
+                   turn-n
+
+                   (get-idx4
+                    (fnc-prt (first current))
+                    fnc
+                    mode
+                    turn-n
+                    (rest current))
+
+                   ;; undo 用の情報
+                   (conj log {:i idx-curr
+                              ;; 相手の手番を設定する
+                              :t turn-n})))
+
+                ))
+            ))))))
+
+;;========================
