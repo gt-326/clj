@@ -111,6 +111,73 @@
         size)))
    ))
 
+;;==========================
 
+;; 遅延評価を導入した「think6」と「think5」を比較
+
+(defn play6_
+  ([] (play6_ {}))
+  ([{mode :mode, size :size, :or {mode 0, size 3}}]
+
+   (if (not (contains? (set (range 3 26 2)) size))
+     ;; error
+     (println
+      (str "error: \n"
+           "valid sizes are " (vec (range 3 26 2))))
+
+     (let [win-pttrns (gen-win-pattern size)
+           init-board (gen-board size)
+           turn-char ([\1 \2] (rand-int 2))
+           board-lives (gen-lives size)]
+
+       ;; think5
+       (time
+        (com/think5
+         win-pttrns init-board board-lives size turn-char))
+
+       ;; think6
+       (time
+        (com/think6
+         win-pttrns init-board board-lives size turn-char))
+
+       ;; 明示的に値を設定しないと「StackOverflowError」が出る。
+
+       ;; marubatsu.core=> (play6_)
+       ;; "Elapsed time: 0.624396 msecs"
+       ;; "Elapsed time: 0.332122 msecs"
+
+       ;; Error printing return value (StackOverflowError) at clojure.lang.LazySeq/sval (LazySeq.java:42).
+       ;; null
+       nil
+       ))))
+
+
+
+(defn play6
+  ([] (play6 {}))
+  ([{mode :mode, size :size, :or {mode 0, size 3}}]
+
+   (if (not (contains? (set (range 3 26 2)) size))
+     ;; error
+     (println
+      (str "error: \n"
+           "valid sizes are " (vec (range 3 26 2))))
+
+     (let [win-pttrns (gen-win-pattern size)
+           init-board (gen-board size)
+           turn-char ([\1 \2] (rand-int 2))
+           board-lives (gen-lives size)
+           board-perfect
+           ;; 改良箇所
+           (com/think6
+            win-pttrns init-board board-lives size turn-char)]
+
+       (marubatsu-repl6
+        win-pttrns
+        board-perfect
+        mode
+        turn-char
+        size)))
+   ))
 
 ;;==========================

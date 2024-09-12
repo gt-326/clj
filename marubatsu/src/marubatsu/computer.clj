@@ -587,14 +587,18 @@
 
 ;; baz
 (defn has-reach? [size board turn lines]
-  (some
-   ;; ポイント
-   ;; [ 相手の石 ]＋[ 空白 ]＋( [ 自分の石 ]：n ）
-   #(= (* 2 (- size 2)) %)
-   (map
-    #(apply +
-            (get-current-scores3 board % turn))
-    lines)))
+  (let [scores
+        (map
+         #(apply +
+                 (get-current-scores3 board % turn))
+         lines)]
+    (some
+     ;; ポイント
+     ;; [ 相手の石 ]＋[ 空白 ]＋( [ 自分の石 ]：n ）
+     #(= (* 2 (- size 2)) %)
+     scores)
+    )
+)
 
 (defn get-position-scores5
   [lines base-score size board lives turn i]
@@ -739,3 +743,52 @@
        (get-board-child2 board-new lives-new life-max turn))
       ))
    ))
+
+;;=================
+
+;; 遅延評価を導入したもの
+
+(defn think6
+  ([win-patterns board lives size turn]
+   (think6 win-patterns board lives size turn -1 -1))
+
+  ([win-patterns board lives size turn idx score]
+   (let [life-max (- (* size size) (dec size))
+         ;; 1. dec lives
+         lives-new (update-lives lives)
+         ;; 2. update board
+         board-new (update-board board lives-new 0)]
+
+     ;; 改修箇所
+     (lazy-cat
+
+      (list {:b board-new
+             :t turn
+             :i idx
+             :s score
+             :l lives-new})
+      (map
+
+       (fn [{:keys [board lives idx]}]
+         (think6
+          win-patterns
+          board
+          lives
+          size
+          (get_turn_next turn)
+          idx
+
+          (:score
+           (first
+            (get-position-scores5
+             win-patterns
+             (gen-base-score2 size)
+             size
+             board-new
+             lives-new
+             turn
+             idx)))
+          ))
+
+       (get-board-child2 board-new lives-new life-max turn))
+      ))))

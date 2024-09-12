@@ -961,7 +961,7 @@
         idx (rand-int (count bests))
         ]
 
-    ;; 最高スコアの手の要素 idx を返す
+    ;; 最高スコアの手のフィールド idx を返す
     (:i (first (bests idx)))
     ))
 
@@ -1095,7 +1095,6 @@
                   (recur
                    current
                    turn-n
-
                    (get-idx4
                     (fnc-prt (first current))
                     fnc
@@ -1112,3 +1111,117 @@
             ))))))
 
 ;;========================
+
+;; カウントを導入
+;; think5 以降、「引き分け」はないので処理を削除した。
+
+(defn marubatsu-repl6 [win-pttrns all-board mode t-start size]
+
+  (let [idxes (gen-maps size)
+        pos-last (last (gen-idx-keys size \a \z))
+        fnc (fn [f s] #(conv-input-to-idx3 idxes pos-last f s))
+
+        frame (gen-frame4 size)
+        fnc-prt (fn [b] #(print-board2 frame (conv-num2 b)))
+        ]
+
+    (loop [board all-board
+           turn t-start
+           idx (get-idx4
+                (fnc-prt (first all-board))
+                fnc
+                mode
+                turn
+                nil)
+
+           ;; undo 用の情報
+           log []]
+
+      ;;=====================
+      ;; illegal, quit, undo
+      ;;=====================
+      (if (= -1 idx)
+        ;; quit
+        (disp-rslt3
+         (fnc-prt (first board))
+         "\n[ quit : O lose ]")
+
+        (if (= -2 idx)
+          ;; undo
+          (let [n (- (count log) 2)
+                flg (neg? n)
+                ;; ベクタに変換しないと、ヘンな挙動になる
+                log-undo (if flg log (vec (take n log)))
+                board-undo
+                (if flg
+                  ;; 現在の状態のまま
+                  board
+                  ;; 特定の手まで、開始時点から「完全読み」を辿る
+                  (rewind all-board log-undo))]
+
+            (recur
+             board-undo
+             turn
+             ((fnc (fnc-prt (first board-undo)) "undo"))
+             log-undo))
+
+          (if (and
+               ;; human
+               (= mode 0) (= turn \1)
+               (or
+                ;; [ a1 - c3 ] 以外の入力
+                (nil? idx)
+                ;; すでに埋まっているマス
+                (#{\1 \2} (nth (:b (first board)) idx))))
+
+            ;; illegal
+            (recur
+             board
+             turn
+             ((fnc (fnc-prt (first board)) "illegal"))
+             log)
+
+            ;;======================
+            ;; common
+            ;;======================
+            (let [turn-n (com/get_turn_next turn)
+                  board-rest (rest board)
+                  current
+                  (first
+                   (if idx
+                     ;; human
+                     (filter #(= idx (:i (first %))) board-rest)
+                     ;; computer
+                     (sort-by #((first %) :s) > board-rest)))
+
+                  board-curr (:b (first current))
+                  idx-curr (:i (first current))]
+
+              ;; ゲーム終了判定
+              (if (win2? win-pttrns board-curr #(= turn %) size)
+                ;; 終了１
+                (disp-rslt3
+                 (fnc-prt (first current))
+                 (str
+                  "\n[ the lead : " (conv_to_OX t-start) " ]"
+                  " [ end : " (conv_to_OX turn) " wins ]"
+                  " [ cnt : " (inc (count log)) " ]"
+                  ))
+
+                ;; turn and wait cmd
+                (recur
+                 current
+                 turn-n
+                 (get-idx4
+                  (fnc-prt (first current))
+                  fnc
+                  mode
+                  turn-n
+                  (rest current))
+
+                 ;; undo 用の情報
+                 (conj log {:i idx-curr
+                            ;; 相手の手番を設定する
+                            :t turn-n}))
+                ))
+            ))))))
