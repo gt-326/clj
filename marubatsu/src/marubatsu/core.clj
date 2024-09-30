@@ -1,6 +1,8 @@
 (ns marubatsu.core
-  (:require [marubatsu.computer :as com])
-  (:use [marubatsu.board]))
+  (:use [marubatsu.board])
+  (:require [marubatsu.computer :as com]
+            [marubatsu.gui :as gui]
+            ))
 
 ;; (play 0) -- computer vs human
 ;; (play 1) -- computer vs computer
@@ -151,8 +153,6 @@
        nil
        ))))
 
-
-
 (defn play6
   ([] (play6 {}))
   ([{mode :mode, size :size, :or {mode 0, size 3}}]
@@ -181,3 +181,33 @@
    ))
 
 ;;==========================
+
+;; GUI 版
+
+(defn play7
+  ([] (play7 {}))
+  ([{mode :mode, size :size, :or {mode 0, size 3}}]
+
+   (if (not (contains? (set (range 3 26 2)) size))
+     ;; error
+     (println
+      (str "error: \n"
+           "valid sizes are " (vec (range 3 26 2))))
+
+     (let [win-pttrns (gen-win-pattern size)
+           init-board (gen-board size)
+           turn-char ([\1 \2] (rand-int 2))
+           board-lives (gen-lives size)
+
+           board-perfect
+           (com/think6
+            win-pttrns init-board board-lives size turn-char)]
+
+       ;; 改良箇所
+       (gui/start-game win-pttrns
+                       board-perfect
+                       mode
+                       turn-char
+                       size)
+       ))
+   ))
