@@ -87,7 +87,7 @@
 
               ;; 更新処理
               b-print
-              (upd-status board log turn current)]
+              (upd-status board log t current)]
 
           ;; ボード表示
           (print-board labels b-print)
@@ -104,10 +104,18 @@
           )))
     ))
 
-(defn fnc-quit [frame]
-  (do
-    (.setEnabled frame false)
-    (JOptionPane/showMessageDialog frame "[ quit : O lose ]")))
+(defn fnc-undo [board log all-board]
+  (let [idx (- (count @log) 2)]
+    ;;　idx が負数でない場合
+    (if (not (neg? idx))
+      ;; 更新処理をおこなう
+      (let [log-undo (vec (take n @log))]
+        ;; undo 用の情報
+        (reset! log log-undo)
+        ;; ボードの情報（特定の手まで、開始時点から「完全読み」を辿る）
+        (reset! board (brd/rewind all-board log-undo))))
+
+    (first @board)))
 
 (defn game-panel [size frame labels board log all-board]
   (proxy [JPanel KeyListener] []
@@ -115,9 +123,22 @@
       (Dimension. size size))
 
     (keyPressed [e]
-      (condp = (.getKeyCode e)
-        81 (fnc-quit frame)
-        nil))
+      (let [msg (condp = (.getKeyCode e)
+                  81 (do
+                       (.setEnabled frame false)
+                       "[ quit : O lose ]")
+                  85 (do
+                       ;; ボード再表示
+                       (print-board
+                        labels
+                        (fnc-undo board log all-board))
+                       "Undo")
+
+
+                  nil)]
+
+        (if (not (nil? msg))
+          (JOptionPane/showMessageDialog frame msg))))
 
     ;; 空のイベントを配置しないとエラーになる
     (keyReleased [e])
