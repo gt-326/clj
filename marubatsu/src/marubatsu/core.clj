@@ -2,7 +2,7 @@
   (:use [marubatsu.board])
   (:require [marubatsu.computer :as com]
             [marubatsu.gui :as gui]
-            ))
+))
 
 ;; (play 0) -- computer vs human
 ;; (play 1) -- computer vs computer
@@ -196,18 +196,22 @@
 
      (let [win-pttrns (gen-win-pattern size)
            init-board (gen-board size)
-           turn-char ([\1 \2] (rand-int 2))
+           turn (rand-int 2)
            board-lives (gen-lives size)
 
            board-perfect
-           (com/think6
-            win-pttrns init-board board-lives size turn-char)]
+           [(com/think6
+             win-pttrns init-board board-lives size \1)
+            (com/think6
+             win-pttrns init-board board-lives size \2)]]
 
        ;; 改良箇所
        (gui/start-game win-pttrns
                        board-perfect
                        mode
-                       turn-char
+                       turn
                        size)
        ))
    ))
+
+;;==========================

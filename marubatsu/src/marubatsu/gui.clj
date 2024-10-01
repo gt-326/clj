@@ -13,9 +13,55 @@
 
 (def LABEL-SIZE 120)
 
-; ----------------------------------------------------------
-; mutable model
-; ----------------------------------------------------------
+;; ----------------------------------------------------------
+;; functional model
+;; ----------------------------------------------------------
+
+(defn mode-1 [all-board turn-int win-pttrns size
+
+              fnc-finish]
+  (loop [board (all-board turn-int)
+         turn ([\1 \2] turn-int)
+         idx nil
+         ;; ゲーム終了時のメッセージ用
+         log []]
+
+    (let [turn-n (com/get_turn_next turn)
+          board-rest (rest board)
+          current
+          (first
+           (if idx
+             ;; 人間が先手のときの１手目、
+             ;; または、人間、コンピュータ両方の２手目以降の手
+             (filter #(= idx (:i (first %))) board-rest)
+
+             ;; コンピュータ先手のときの１手目
+             (sort-by #((first %) :s) > board-rest)))
+
+          board-curr (:b (first current))
+          idx-curr (:i (first current))]
+
+      ;; ゲーム終了判定
+      (if (brd/win2? win-pttrns board-curr #(= turn %) size)
+
+        ;; finish
+        (fnc-finish current turn-int turn log)
+
+        ;; change turn
+        (recur
+         current
+         turn-n
+         (brd/random-choosing-from-bests (rest current))
+
+         ;; undo 用の情報
+         (conj log {:i idx-curr
+                    ;; 相手の手番を設定する
+                    :t turn-n}))
+        ))))
+
+;; ----------------------------------------------------------
+;; mutable model
+;; ----------------------------------------------------------
 
 (defn upd-status [board log turn current]
   (let [current-status (first current)]
@@ -36,9 +82,31 @@
     ;;  :l lives-new}
     current-status))
 
-; ----------------------------------------------------------
-; gui
-; ----------------------------------------------------------
+(defn fnc-undo [board log all-board]
+  (let [n (- (count @log) 2)]
+    ;;　idx が負数でない場合
+    (if (not (neg? n))
+      ;; 更新処理をおこなう
+      (let [log-undo (vec (take n @log))]
+        ;; undo 用の情報
+        (reset! log log-undo)
+        ;; ボードの情報（特定の手まで、開始時点から「完全読み」を辿る）
+        (reset! board (brd/rewind all-board log-undo))))
+
+    (first @board)))
+
+(defn first-hand-computer [[board log] turn-int all-board]
+  ;; computer 先手
+  (let [t-start ([\1 \2] turn-int)
+        current
+        (first
+         (sort-by #((first %) :s) > (rest all-board)))]
+
+    (upd-status board log t-start current)))
+
+;; ----------------------------------------------------------
+;; gui
+;; ----------------------------------------------------------
 
 (defn print-board [labels info]
   (doseq [[idx l] (map-indexed vector labels)]
@@ -73,7 +141,8 @@
     ;; 操作抑制
     (.setEnabled frame false)))
 
-(defn gen-click-fnc [frame labels board log win-pttrns size t-start]
+(defn gen-click-fnc [[board log t-start]
+                     frame labels win-pttrns size]
   (fn [l turn]
     (loop [cnt 0
            t turn
@@ -94,7 +163,7 @@
 
           (if (brd/win2? win-pttrns (:b b-print) #(= t %) size)
             ;; 終了表示
-            (show-result frame t-start t (count @log))
+            (show-result frame ([\1 \2] @t-start) t (count @log))
             ;; 処理継続(手番交代)
             (recur
              (inc cnt)
@@ -104,20 +173,8 @@
           )))
     ))
 
-(defn fnc-undo [board log all-board]
-  (let [idx (- (count @log) 2)]
-    ;;　idx が負数でない場合
-    (if (not (neg? idx))
-      ;; 更新処理をおこなう
-      (let [log-undo (vec (take n @log))]
-        ;; undo 用の情報
-        (reset! log log-undo)
-        ;; ボードの情報（特定の手まで、開始時点から「完全読み」を辿る）
-        (reset! board (brd/rewind all-board log-undo))))
-
-    (first @board)))
-
-(defn game-panel [size frame labels board log all-board]
+(defn game-panel
+  [[board log t-start] size frame labels all-board]
   (proxy [JPanel KeyListener] []
     (getPreferredSize []
       (Dimension. size size))
@@ -125,16 +182,36 @@
     (keyPressed [e]
       (let [msg (condp = (.getKeyCode e)
                   81 (do
-                       (.setEnabled frame false)
+                       ;;(.setEnabled frame false)
                        "[ quit : O lose ]")
+
+                  82 (let [turn-new (rand-int 2)
+                           a-board (all-board turn-new)]
+                       ;; 先手を更新
+                       (reset! t-start turn-new)
+
+                       ;; ボード再表示
+                       (print-board
+                        labels
+                        (if (= \1 ([\1 \2] @t-start))
+                          ;; human
+                          (do
+                            (reset! board a-board)
+                            (reset! log [])
+                            (first @board))
+
+                          ;; computer
+                          (first-hand-computer
+                           [board log] @t-start a-board)))
+
+                       "Reset")
+
                   85 (do
                        ;; ボード再表示
                        (print-board
                         labels
-                        (fnc-undo board log all-board))
+                        (fnc-undo board log (all-board @t-start)))
                        "Undo")
-
-
                   nil)]
 
         (if (not (nil? msg))
@@ -174,9 +251,18 @@
           (fnc label \1))))
     ))
 
-(defn start-game [win-pttrns all-board mode t-start size]
-  (let [board (atom all-board)
+(defn fnc-finish [frame labels]
+  (fn [current turn-int turn log]
+    (do
+      ;; ボード表示
+      (print-board labels (first current))
+      ;; 終了表示
+      (show-result frame ([\1 \2] turn-int) turn (count log)))))
+
+(defn start-game [win-pttrns all-board mode turn-int size]
+  (let [board (atom (all-board turn-int))
         log (atom [])
+        t-start (atom turn-int)
 
         frame (JFrame. "MaruBatsu")
 
@@ -188,12 +274,13 @@
 
         panel
         (game-panel
-         (+ (* LABEL-SIZE size) 40)
-         frame labels board log all-board)
+         [board log t-start]
+         (+ (* LABEL-SIZE size) 40) frame labels all-board)
 
         click-fnc
         (gen-click-fnc
-         frame labels board log win-pttrns size t-start)
+         [board log t-start]
+         frame labels win-pttrns size)
 
         fnc-action (gen-click-event click-fnc)]
 
@@ -227,59 +314,19 @@
       (.setVisible true))
 
     (if (= mode 0)
+
       ;; [ human vs computer ]
-
-      (if (= t-start \2)
+      (if (= \2 ([\1 \2] @t-start))
         ;; computer 先手
-        (let [current
-              (first
-               (sort-by #((first %) :s) > (rest all-board)))
-
-              b-print
-              (upd-status board log t-start current)]
-
-          ;; ボード表示
-          (print-board labels b-print)))
+        (print-board
+         labels
+         (first-hand-computer
+          [board log]
+          @t-start (all-board turn-int))))
 
       ;; [ computer vs computer ]
-      (loop [board all-board
-             turn t-start
-             idx nil
-             ;; ゲーム終了時のメッセージ用
-             log []]
-
-          (let [turn-n (com/get_turn_next turn)
-                board-rest (rest board)
-                current
-                (first
-                 (if idx
-                   ;; 人間が先手のときの１手目、
-                   ;; または、人間、コンピュータ両方の２手目以降の手
-                   (filter #(= idx (:i (first %))) board-rest)
-
-                   ;; コンピュータ先手のときの１手目
-                   (sort-by #((first %) :s) > board-rest)))
-
-                board-curr (:b (first current))
-                idx-curr (:i (first current))]
-
-            ;; ゲーム終了判定
-            (if (brd/win2? win-pttrns board-curr #(= turn %) size)
-              (do
-                ;; ボード表示
-                (print-board labels (first current))
-                ;; 終了表示
-                (show-result frame t-start turn (count log)))
-
-              ;; change turn
-              (recur
-               current
-               turn-n
-               (brd/random-choosing-from-bests (rest current))
-
-               ;; undo 用の情報
-               (conj log {:i idx-curr
-                          ;; 相手の手番を設定する
-                          :t turn-n}))
-              ))))
+      (mode-1
+       all-board turn-int win-pttrns size
+       ;; ゲーム終了時の表示
+       (fnc-finish frame labels)))
     ))
