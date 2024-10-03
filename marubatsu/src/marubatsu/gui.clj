@@ -128,7 +128,7 @@
                           Color/WHITE)))
       )))
 
-(defn show-result [frame t-start turn cnt]
+(defn show-result [frame labels t-start turn cnt]
   ;; ゲーム終了表示
   (do
     (JOptionPane/showMessageDialog
@@ -140,7 +140,9 @@
       ))
 
     ;; 操作抑制
-    (.setEnabled frame false)))
+    (doseq [l labels]
+      (.setEnabled l false))
+    ))
 
 (defn gen-click-fnc [[board log t-start]
                      frame labels win-pttrns size]
@@ -168,7 +170,7 @@
 
           (if (brd/win2? win-pttrns (:b b-print) #(= t %) size)
             ;; 終了表示
-            (show-result frame ([\1 \2] @t-start) t (count @log))
+            (show-result frame labels ([\1 \2] @t-start) t (count @log))
 
             (do
               ;; 「コンピュータが考えている」感じを出すためのタイマー
@@ -192,13 +194,20 @@
     (keyPressed [e]
       (let [msg (condp = (.getKeyCode e)
                   81 (do
-                       ;;(.setEnabled frame false)
+                       ;; 操作抑制
+                       (doseq [l labels]
+                         (.setEnabled l false))
+
                        "[ quit : O lose ]")
 
                   82 (let [turn-new (rand-int 2)
                            a-board (all-board turn-new)]
                        ;; 先手を更新
                        (reset! t-start turn-new)
+
+                       ;; 操作抑制を解除
+                       (doseq [l labels]
+                         (.setEnabled l true))
 
                        ;; ボード再表示
                        (print-board
@@ -222,6 +231,8 @@
                         labels
                         (fnc-undo board log (all-board @t-start)))
                        "Undo")
+
+                  ;; [ Q, R, U ] 以外のキー入力
                   nil)]
 
         (if (not (nil? msg))
@@ -267,7 +278,7 @@
       ;; ボード表示
       (print-board labels (first current))
       ;; 終了表示
-      (show-result frame ([\1 \2] turn-int) turn (count log)))))
+      (show-result frame labels ([\1 \2] turn-int) turn (count log)))))
 
 (defn start-game [win-pttrns all-board mode turn-int size]
   (let [board (atom (all-board turn-int))
