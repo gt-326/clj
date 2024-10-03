@@ -5,7 +5,8 @@
    (javax.swing JPanel JFrame JLabel JOptionPane border.LineBorder))
 
   (:require [marubatsu.computer :as com]
-            [marubatsu.board :as brd]))
+            [marubatsu.board :as brd]
+            [clojure.core.async :as ca]))
 
 ;; ---------------------------------------------------------
 ;; constant variables
@@ -144,10 +145,14 @@
 (defn gen-click-fnc [[board log t-start]
                      frame labels win-pttrns size]
   (fn [l turn]
-    (loop [cnt 0
-           t turn
-           ;; human: idx
-           i (Integer/parseInt (.getName l))]
+
+    ;; 「コンピュータが考えている感じ」を出すためにタイマーを使っているが、
+    ;; 通常の loop ではなく、go-loop を用いる必要がある
+    (;;loop
+     ca/go-loop [cnt 0
+                 t turn
+                 ;; human: idx
+                 i (Integer/parseInt (.getName l))]
 
       (if (< cnt 2)
         (let [current
@@ -164,12 +169,17 @@
           (if (brd/win2? win-pttrns (:b b-print) #(= t %) size)
             ;; 終了表示
             (show-result frame ([\1 \2] @t-start) t (count @log))
-            ;; 処理継続(手番交代)
-            (recur
-             (inc cnt)
-             (com/get_turn_next t)
-             ;; computer: idx
-             (brd/random-choosing-from-bests (rest @board))))
+
+            (do
+              ;; 「コンピュータが考えている」感じを出すためのタイマー
+              (ca/<! (ca/timeout 1000))
+
+              ;; 処理継続(手番交代)
+              (recur
+               (inc cnt)
+               (com/get_turn_next t)
+               ;; computer: idx
+               (brd/random-choosing-from-bests (rest @board)))))
           )))
     ))
 
