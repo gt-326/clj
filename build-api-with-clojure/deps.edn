@@ -8,4 +8,7 @@
         spootnik/unilog
         {:mvn/version "0.7.30"}
 
+        com.stuartsierra/component
+        {:mvn/version "1.1.0"}
+
         }}

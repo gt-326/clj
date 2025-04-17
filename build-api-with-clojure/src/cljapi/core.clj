@@ -1,18 +1,23 @@
-;; ./src/cljapi/core.clj
 (ns cljapi.core
   (:require
-    [ring.adapter.jetty9 :as jetty]))
+    ;; [ring.adapter.jetty9 :as jetty]
+    [cljapi.system :as system]))
 
 
-(defn ring-handler
-  [_req]
-  {:status 200
-   :body "Hello, Clojure API! \n"})
+;; (defn ring-handler
+;;  [_req]
+;;  {:status 200
+;;   :body "Hello, Clojure API!!?? \n"})
+
+
+;; (defn -main
+;;  [& _args]
+;;  (jetty/run-jetty ring-handler {:port 8000}))
 
 
 (defn -main
   [& _args]
-  (jetty/run-jetty ring-handler {:port 8000}))
+  (system/start))
 
 
 ;; ファイル全体を評価した後で、[1]の式を評価します。
