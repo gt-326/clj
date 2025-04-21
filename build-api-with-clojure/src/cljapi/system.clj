@@ -8,11 +8,19 @@
 (defn- new-system
   []
   (component/system-map
-    :handler (c.handler/map->Handler {})
+    ;; ①
+    :handler
+    ;; cljapi.component.handler/Handler を生成
+    (c.handler/map->Handler {})
+
+    ;; ②
     :server (component/using
+              ;; cljapi.component.server/Jetty9Server を生成
+              ;; J9S {:handler nil, :opts {:join? false, :port 8000}, :server nil}
               (c.server/map->Jetty9Server {:opts {:join? false
                                                   :port 8000}})
               ;; component/usingの第二引数で依存しているコンポーネントを宣言している
+              ;; ①
               [:handler])))
 
 
@@ -27,12 +35,12 @@
   (component/stop system))
 
 
-(defonce system (atom nil))
+;; (defonce system (atom nil))
 
 
-(defn go
-  []
-  (when @system
-    (stop @system)
-    (reset! system nil))
-  (reset! system (start)))
+;; (defn go
+;;   []
+;;   (when @system
+;;     (stop @system)
+;;     (reset! system nil))
+;;   (reset! system (start)))

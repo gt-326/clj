@@ -11,4 +11,8 @@
         com.stuartsierra/component
         {:mvn/version "1.1.0"}
 
-        }}
+        }
+
+ :aliases {:dev
+           {:extra-paths ["dev"]}}
+ }

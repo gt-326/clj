@@ -1,4 +1,5 @@
 # ./Makefile
+# $ make static-check
 
 #.PHONY: static-check
 static-check: format lint
