@@ -2,11 +2,13 @@
   (:require
     [cljapi.component.handler :as c.handler]
     [cljapi.component.server :as c.server]
+    [cljapi.config :as config]
+
     [com.stuartsierra.component :as component]))
 
 
 (defn- new-system
-  []
+  [conf]
   (component/system-map
     ;; ①
     :handler
@@ -17,16 +19,16 @@
     :server (component/using
               ;; cljapi.component.server/Jetty9Server を生成
               ;; J9S {:handler nil, :opts {:join? false, :port 8000}, :server nil}
-              (c.server/map->Jetty9Server {:opts {:join? false
-                                                  :port 8000}})
+              (c.server/map->Jetty9Server (:server conf))
               ;; component/usingの第二引数で依存しているコンポーネントを宣言している
               ;; ①
               [:handler])))
 
 
 (defn start
-  []
-  (let [system (new-system)]
+  [prof]
+  (let [conf (config/read-config prof)
+        system (new-system conf)]
     (component/start system)))
 
 

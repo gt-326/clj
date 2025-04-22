@@ -1,0 +1,22 @@
+;; ./resources/config.edn
+{:server {:opts {:host "localhost"
+
+                 ;; url のドメイン直後のポートを振り分けるためのもの。
+                 :port
+                 ;; タグリテラル　その１
+                 ;; 戻り値の型は、基本的に String である。
+                 ;; これは、long 型でパースして取得するためのキーワード指定。
+                 #long
+
+                 ;; タグリテラル　その２
+                 ;; #profile は、この設定ファイル config.edn をパースする関数
+                 ;; （ cljapi.config/read-config() ）の、その定義時に指定されている
+                 ;; 引数の値とひもづけるのキー名（ :profile ）と一致させる必要がある。
+                 #profile
+
+                 ;; パースする関数に渡される引数が、
+                 ;; :dev なら 8000 、それ以外なら 5000 にポートが振り分けられる
+                 {:default 5000
+                  :dev 8000}
+
+                 :join? false}}}
