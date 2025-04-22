@@ -9,7 +9,7 @@
 
 (defn start
   []
-  (reset! system (system/start)))
+  (reset! system (system/start :test)))
 
 
 (defn stop

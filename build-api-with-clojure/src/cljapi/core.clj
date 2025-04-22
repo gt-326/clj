@@ -17,7 +17,7 @@
 
 (defn -main
   [& _args]
-  (system/start))
+  (system/start :prod))
 
 
 ;; ファイル全体を評価した後で、[1]の式を評価します。
