@@ -1,4 +1,5 @@
 (ns cljapi.core
+  (:gen-class)
   (:require
     ;; [ring.adapter.jetty9 :as jetty]
     [cljapi.system :as system]))

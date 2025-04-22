@@ -14,5 +14,10 @@
         }
 
  :aliases {:dev
-           {:extra-paths ["dev"]}}
+           {:extra-paths ["dev"]}
+
+           :build
+           {:deps
+            {io.github.clojure/tools.build {:git/tag "v0.8.2" :git/sha "ba1a2bf"}}
+            :ns-default build}}
  }
