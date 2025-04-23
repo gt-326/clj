@@ -4,6 +4,9 @@
     [cljapi.component.server :as c.server]
     [cljapi.config :as config]
 
+    [clojure.tools.logging :as log]
+    [unilog.config :as unilog]
+
     [com.stuartsierra.component :as component]))
 
 
@@ -25,11 +28,30 @@
               [:handler])))
 
 
+(defn- init-logging!
+  [conf]
+  (unilog/start-logging! (:logging conf)))
+
+
+;; (defn start
+;;   [prof]
+;;   (let [conf (config/read-config prof)
+;;         system (new-system conf)]
+;;     (component/start system)))
+
+
 (defn start
   [prof]
-  (let [conf (config/read-config prof)
-        system (new-system conf)]
-    (component/start system)))
+  (let [config (config/read-config prof)
+        system (new-system config)
+
+        _ (init-logging! config)
+        _ (log/info "-- system is ready to start --")
+
+        started-system (component/start system)]
+
+    (log/info "-- system is started --")
+    started-system))
 
 
 (defn stop

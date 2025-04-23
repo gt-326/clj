@@ -19,4 +19,27 @@
                  {:default 5000
                   :dev 8000}
 
-                 :join? false}}}
+                 :join? false}}
+
+ :logging {;; ログレベル
+           :level #profile {
+                            ;; 開発中は debug レベル以上を出力する
+                            :dev :debug
+                            ;;:prod :debug
+
+                            ;; それ以外では info レベル以上で出力される
+                            :default :info
+                            }
+
+           ;; 標準出力に出す
+           :console #profile {
+                              ;; 本番では JSON 形式で出力
+                              :prod {:encoder :json}
+                              ;; それ以外ではデフォルトのフォーマットで出力
+                              :default true}
+
+           ;; 特定のパッケージに対して、上記「ログレベル」で設定した値を上書きする
+           ;; :overrides {"org.eclipse.jetty"
+           ;;             ;; 開発時に debug レベルだとログが多すぎるので抑制
+           ;;             :info}
+           }}
