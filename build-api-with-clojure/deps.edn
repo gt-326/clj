@@ -19,6 +19,11 @@
  :aliases {:dev
            {:extra-paths ["dev"]}
 
+           :test
+           {:extra-deps
+            {lambdaisland/kaocha {:mvn/version "1.68.1059"}}
+            :main-opts ["-m" "kaocha.runner"]}
+
            :build
            {:deps
             {io.github.clojure/tools.build {:git/tag "v0.8.2" :git/sha "ba1a2bf"}}

@@ -3,11 +3,9 @@
     [cljapi.component.handler :as c.handler]
     [cljapi.component.server :as c.server]
     [cljapi.config :as config]
-
     [clojure.tools.logging :as log]
-    [unilog.config :as unilog]
-
-    [com.stuartsierra.component :as component]))
+    [com.stuartsierra.component :as component]
+    [unilog.config :as unilog]))
 
 
 (defn- new-system

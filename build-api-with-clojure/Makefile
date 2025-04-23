@@ -1,16 +1,20 @@
 # ./Makefile
 # $ make static-check
 
-#.PHONY: static-check
-static-check: format lint
-
-#.PHONY: format
+.PHONY: format
 format: ## フォーマット
 	cljstyle check
 
-#.PHONY: lint
+.PHONY: lint
 lint: ## リント
 	clj-kondo --lint src
+
+.PHONY: static-check
+static-check: format lint
+
+.PHONY: test
+test:
+	bin/kaocha --fail-fast
 
 .PHONY: clean
 clean:
