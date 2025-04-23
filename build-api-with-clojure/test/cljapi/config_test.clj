@@ -24,4 +24,8 @@
 
     ;; (is (= :prod2
     ;;        (:profile (sut/read-config :prod))))
+
+    (is (not
+         (= :prod2
+            (:profile (sut/read-config :prod)))))
     ))
