@@ -10,7 +10,7 @@
 
 (defn- new-system
   ;; [conf]
-  [{:as conf ;;:keys [:profile]
+  [{:as conf ; :keys [:profile]
     }]
   (component/system-map
     ;; ①
