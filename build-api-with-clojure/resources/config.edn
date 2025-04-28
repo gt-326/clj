@@ -39,7 +39,7 @@
                               :default true}
 
            ;; 特定のパッケージに対して、上記「ログレベル」で設定した値を上書きする
-           ;; :overrides {"org.eclipse.jetty"
+           ;;:overrides {"org.eclipse.jetty"
            ;;             ;; 開発時に debug レベルだとログが多すぎるので抑制
            ;;             :info}
            }}

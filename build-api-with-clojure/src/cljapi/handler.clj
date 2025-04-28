@@ -1,7 +1,8 @@
 ;; ./src/cljapi/handler.clj
 (ns cljapi.handler
   (:require
-   [ring.util.http-response :as res]))
+    [ring.util.http-response :as res]))
+
 
 (defmulti handler
   "引数はリクエストマップ
@@ -13,6 +14,7 @@
   (fn [req]
     [(get-in req [:reitit.core/match :data :name])
      (get req :request-method)]))
+
 
 (defmethod handler :default
   [_]

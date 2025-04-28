@@ -26,6 +26,5 @@
     ;;        (:profile (sut/read-config :prod))))
 
     (is (not
-         (= :prod2
-            (:profile (sut/read-config :prod)))))
-    ))
+          (= :prod2
+             (:profile (sut/read-config :prod)))))))

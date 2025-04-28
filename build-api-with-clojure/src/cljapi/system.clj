@@ -9,16 +9,18 @@
 
 
 (defn- new-system
-;;[conf]
-  [{:as conf :keys [:profile]}]
+  ;; [conf]
+  [{:as conf ;;:keys [:profile]
+    }]
   (component/system-map
     ;; ①
     :handler
     ;; cljapi.component.handler/Handler を生成
 
     ;; config内のprofileをHandler Componentに渡すように変更している
-;;  (c.handler/map->Handler {})
+    ;;  (c.handler/map->Handler {})
     (c.handler/map->Handler {:profile conf})
+
     ;; ②
     :server (component/using
               ;; cljapi.component.server/Jetty9Server を生成

@@ -1,11 +1,10 @@
 ;; ./src/cljapi/handler/health.clj
 (ns cljapi.handler.health
   (:require
-   [ring.util.http-response :as res]
-
-   ;; 10_Clojureで作るAPI ルーターを追加する　その３：Systemの再起動を減らす
-   [cljapi.handler :as h]
-   [cljapi.router :as r]))
+    ;; 10_Clojureで作るAPI ルーターを追加する　その３：Systemの再起動を減らす
+    [cljapi.handler :as h]
+    [cljapi.router :as r]
+    [ring.util.http-response :as res]))
 
 
 (defn health
