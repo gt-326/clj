@@ -17,11 +17,24 @@
   (res/ok "greeting: Goodbye!? \n"))
 
 
+;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
+;; その３−１：JSONの入出力に対応する（エラーのレスポンスをもらう）
+
+;; (defmethod h/handler [::r/hello :get]
+;;   [_]
+;;   (res/ok "Hello \n"))
+
+
+;; (defmethod h/handler [::r/bye :get]
+;;   [_]
+;;   (res/ok "Bye \n"))
+
+
 (defmethod h/handler [::r/hello :get]
   [_]
-  (res/ok "Hello \n"))
+  (res/ok {:greeting "Hello, hello \n"}))
 
 
 (defmethod h/handler [::r/bye :get]
   [_]
-  (res/ok "Bye \n"))
+  (res/ok {:greeting "Bye, bye \n"}))
