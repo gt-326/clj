@@ -22,6 +22,10 @@
 
         ;; 10_Clojureで作るAPI ルーターを追加する　その２：評価のし忘れを防ぐ
         ring/ring-devel {:mvn/version "1.9.5"}
+
+        ;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
+        ;; その１：APIリクエストをロギングする
+        ring-logger/ring-logger {:mvn/version "1.1.1"}
         }
 
  :aliases {:dev
