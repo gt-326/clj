@@ -8,7 +8,14 @@
     [reitit.ring :as ring]
     ;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
     ;; その２：定番のMiddlewareをまとめて入れる
-    [ring.middleware.defaults :as m.defautls]))
+    [ring.middleware.defaults :as m.defautls]
+
+    ;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
+    ;; その３−２：JSONの入出力に対応する
+    [camel-snake-kebab.core :as csk]
+    [clojure.core.memoize :as memo]
+    [muuntaja.core :as muu]
+    [muuntaja.middleware :as muu.middleware]))
 
 
 ;; (def router
@@ -38,7 +45,7 @@
       (assoc :proxy true)))
 
 
-(def router
+(def router__
   (ring/router
     [["/health" {:name ::health
                  :handler h/handler}]
@@ -50,3 +57,38 @@
                  :handler h/handler}]
       ["/bye" {:name ::bye
                :handler h/handler}]]]))
+
+
+;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
+;; その３−２：JSONの入出力に対応する
+(def ^:private memoized->camelCaseString
+  "実装上kebab-case keywordでやっているものをJSONにするときにcamelCaseにしたい。
+   バリエーションはそれほどないはずなのでキャッシュする"
+  (memo/lru csk/->camelCaseString {} :lru/threshold 1024))
+
+
+(def ^:private muuntaja-config
+  "https://cljdoc.org/d/metosin/muuntaja/0.6.8/doc/configuration"
+  (-> muu/default-options
+      ;; JSONにencodeする時にキーをcamelCaseにする
+      (assoc-in [:formats "application/json" :encoder-opts]
+                {:encode-key-fn memoized->camelCaseString})
+      ;; JSON以外のacceptでリクエストされたときに返らないように制限する
+      (update :formats #(select-keys % ["application/json"]))
+      muu/create))
+
+
+(def router
+  (ring/router
+   [["/health" {:name ::health
+                :handler h/handler}]
+
+    ;; Ring-Defaults で入る機能はAPIとしての動作にだけ働けばいい。
+    ;;  /api 配下で機能するように適用する。
+    ["/api" {:middleware [[m.defautls/wrap-defaults ring-defaults-config]
+                          [muu.middleware/wrap-format muuntaja-config]
+                          muu.middleware/wrap-params]}
+     ["/hello" {:name ::hello
+                :handler h/handler}]
+     ["/bye" {:name ::bye
+              :handler h/handler}]]]))

@@ -30,6 +30,12 @@
         ;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
         ;; その２：定番のMiddlewareをまとめて入れる
         ring/ring-defaults {:mvn/version "0.3.3"}
+
+        ;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
+        ;; その３−２：JSONの入出力に対応する
+        metosin/muuntaja {:mvn/version "0.6.8"}
+        camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
+        org.clojure/core.memoize {:mvn/version "1.0.257"}
         }
 
  :aliases {:dev
