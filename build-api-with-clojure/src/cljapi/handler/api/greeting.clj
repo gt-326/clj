@@ -37,4 +37,14 @@
 
 (defmethod h/handler [::r/bye :get]
   [_]
-  (res/ok {:greeting "Bye, bye \n"}))
+  (res/ok
+   ;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
+   ;; その３−２：JSONの入出力に対応する
+
+   ;; cljapi.router/memoized->camelCaseString により、
+   ;; 以下のように key が変換される。
+   ;; [ ":greeting-bye-bye" -> "greetingByeBye" ]
+
+   ;;{:greeting "Bye, bye \n"}
+   {:greeting-bye-bye "Bye, bye \n"}
+   ))

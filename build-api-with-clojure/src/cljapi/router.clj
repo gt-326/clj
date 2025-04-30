@@ -62,7 +62,7 @@
 ;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
 ;; その３−２：JSONの入出力に対応する
 (def ^:private memoized->camelCaseString
-  "実装上kebab-case keywordでやっているものをJSONにするときにcamelCaseにしたい。
+  "実装上 kebab-case keyword でやっているものを JSON にするときに camelCase にしたい。
    バリエーションはそれほどないはずなのでキャッシュする"
   (memo/lru csk/->camelCaseString {} :lru/threshold 1024))
 
@@ -70,10 +70,11 @@
 (def ^:private muuntaja-config
   "https://cljdoc.org/d/metosin/muuntaja/0.6.8/doc/configuration"
   (-> muu/default-options
-      ;; JSONにencodeする時にキーをcamelCaseにする
+      ;; JSON に encode する時にキーを camelCase にする
       (assoc-in [:formats "application/json" :encoder-opts]
                 {:encode-key-fn memoized->camelCaseString})
-      ;; JSON以外のacceptでリクエストされたときに返らないように制限する
+
+      ;; JSON 以外の accept でリクエストされたときに返らないように制限する
       (update :formats #(select-keys % ["application/json"]))
       muu/create))
 
