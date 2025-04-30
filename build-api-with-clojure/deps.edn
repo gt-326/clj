@@ -36,6 +36,10 @@
         metosin/muuntaja {:mvn/version "0.6.8"}
         camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
         org.clojure/core.memoize {:mvn/version "1.0.257"}
+
+        ;; 12_Clojureで作るAPI RESTful APIを追加する
+        ;; その２：バリデーション
+        funcool/struct {:mvn/version "1.4.0"}
         }
 
  :aliases {:dev

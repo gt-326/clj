@@ -6,6 +6,7 @@
     ;; 具体的なhandlerへの依存が消えている
     [cljapi.handler :as h]
     [reitit.ring :as ring]
+
     ;; 11_Clojureで作るAPI RingMiddlewareを追加してAPIらしくする
     ;; その２：定番のMiddlewareをまとめて入れる
     [ring.middleware.defaults :as m.defautls]
@@ -125,4 +126,11 @@
                       ;; PUT と DELETE があると定義
                       :put {:handler h/handler}
                       :delete {:handler h/handler}}]
+
+     ;; 12_Clojureで作るAPI RESTful APIを追加する
+     ;; その２：バリデーション
+     ["/account" {:name ::account
+                  ;; GET と POST があると定義
+                  :get {:handler h/handler}
+                  :post {:handler h/handler}}]
      ]]))
