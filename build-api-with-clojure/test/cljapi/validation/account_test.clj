@@ -18,6 +18,7 @@
     (is (= [nil
             {:search (str/join (repeat 255 "a"))}]
            (validate-get-account {:params {:search (str/join (repeat 255 "a"))}}))))
+
   (testing "異常系"
     (is (= [{:search "文字列である必要があります"}
             {}]
@@ -61,4 +62,15 @@
              :email "メールアドレスの形式が正しくありません"}
             {}]
            (validate-post-account {:params {:name (str/join (repeat 256 "a"))
-                                            :email "hoge"}})))))
+                                            :email "hoge"}})))
+
+    (is (= (validate-post-account {:params {:name (str/join (repeat 256 "a"))
+                                            :email "hoge@example.com"}})
+           [{:name "255文字以内で入力してください"}
+            {:email "hoge@example.com"}]))
+
+    (is (= (validate-post-account {:params {:name "トヨクモ"
+                                            :email "hoge"}})
+         [{:email "メールアドレスの形式が正しくありません"}
+          {:name "トヨクモ"}]))
+    ))
