@@ -13,7 +13,12 @@
     ;; 10_Clojureで作るAPI ルーターを追加する　その２：評価のし忘れを防ぐ
     [ring.middleware.lint :as m.lint]
     [ring.middleware.reload :as m.reload]
-    [ring.middleware.stacktrace :as m.stacktrace]))
+    [ring.middleware.stacktrace :as m.stacktrace]
+
+    ;; 12_Clojureで作るAPI RESTful APIを追加する
+    ;; その１：パスパラメーターの制御
+    [cljapi.handler.api.account]
+    ))
 
 
 ;; (defn- ring-handler

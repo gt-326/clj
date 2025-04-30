@@ -15,7 +15,13 @@
     [camel-snake-kebab.core :as csk]
     [clojure.core.memoize :as memo]
     [muuntaja.core :as muu]
-    [muuntaja.middleware :as muu.middleware]))
+    [muuntaja.middleware :as muu.middleware]
+
+    ;; 12_Clojureで作るAPI RESTful APIを追加する
+    ;; その１：パスパラメーターの制御
+    [reitit.coercion.schema]
+    [reitit.ring.coercion :as rrc]
+    [schema.core :as s]))
 
 
 ;; (def router
@@ -88,8 +94,35 @@
     ;;  /api 配下で機能するように適用する。
     ["/api" {:middleware [[m.defautls/wrap-defaults ring-defaults-config]
                           [muu.middleware/wrap-format muuntaja-config]
-                          muu.middleware/wrap-params]}
+                          muu.middleware/wrap-params
+
+                          ;; 12_Clojureで作るAPI RESTful APIを追加する
+                          ;; その１：パスパラメーターの制御
+
+                          ;; middlewareを2つ追加
+                          rrc/coerce-exceptions-middleware
+                          rrc/coerce-request-middleware]
+
+             ;; 12_Clojureで作るAPI RESTful APIを追加する
+             ;; その１：パスパラメーターの制御
+
+             ;; /api以下では型定義に基づいて変換するようにするための設定
+             :coercion reitit.coercion.schema/coercion}
+
      ["/hello" {:name ::hello
                 :handler h/handler}]
      ["/bye" {:name ::bye
-              :handler h/handler}]]]))
+              :handler h/handler}]
+
+     ;; 12_Clojureで作るAPI RESTful APIを追加する
+     ;; その１：パスパラメーターの制御
+
+     ;; :id で /account の後にくるのがパスパラメーターであることを示している
+     ["/account/:id" {:name ::account-by-id
+                      ;; :id は Integer(java.lang.Long) であることを宣言
+                      :parameters {:path {:id s/Int}}
+
+                      ;; PUT と DELETE があると定義
+                      :put {:handler h/handler}
+                      :delete {:handler h/handler}}]
+     ]]))
