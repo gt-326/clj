@@ -1,0 +1,132 @@
+;; chap22.4 (P301)
+
+(def ^:dynamic *paths* (atom []))
+
+
+(def failsym '[end])
+
+
+(defn fail
+  []
+  (if (empty? (deref *paths*))
+    failsym
+    (let [fnc (peek (deref *paths*))]
+      ;; POP
+      (reset! *paths* (pop (deref *paths*)))
+      (fnc))))
+
+
+(defn cb
+  [fnc choices]
+  (if (seq choices)
+    (do
+      (when (rest choices)
+        (reset!
+          *paths*
+          ;; PUSH
+          (conj
+            (deref *paths*)
+            (fn [] (cb fnc (rest choices))))))
+
+      (fnc (first choices)))
+    (fail)))
+
+
+(defmacro choose-bind
+  [param choices & body]
+  `(cb (fn [~param] ~@body) ~choices))
+
+
+(defmacro choose
+  [& choices]
+  (if (seq choices)
+    `(do
+       ~@(map
+           (fn [c]
+             `(reset!
+                *paths*
+                (conj
+                  (deref *paths*)
+                  #(~@c))))
+           (reverse (rest choices)))
+
+       ~(first choices))
+    `(fail)))
+
+
+(comment
+
+
+)
+
+
+;; chap22.4 (P303)
+
+
+(=defn two-numbers []
+  (choose-bind n1 '(0 1 2 3 4)
+    (choose-bind n2 '(0 1 2 3 4)
+      (=values n1 n2))))
+
+
+(=defn parlor-trick [sum]
+  (=bind2 [n1 n2] (two-numbers)
+    (if (= sum (+ n1 n2))
+      (format "the sum of %s %s" n1 n2))
+    (fail)))
+
+
+
+;; chap22.4 (P305)
+
+
+(defn kids [n]
+      (case n
+            a '(b c)
+            b '(d e)
+            c '(d f)
+            f '(g)
+
+            ;; ガードが必要
+            ;; Execution error (IllegalArgumentException) at foo.core/kids (REPL:840).
+            ;; No matching clause: z
+            '()))
+
+
+;; 改変した
+;; 式の入れ子だとスタックオーバーフローになっちゃう。
+;; それを回避するために、引数 acc を追加して、データのみを累積させるようにした。
+
+(=defn descent [n1 n2 acc]
+  (cond
+    (= n1 n2)
+       (reverse (cons n2 acc))
+    (kids n1)
+       (choose-bind n (kids n1)
+                      (descent n n2 (cons n1 acc)))
+    :else
+       (fail)))
+
+
+;; chap22.5 (P307 - 308)
+
+
+(=defn gen-sent-candy-log []
+  (choose-bind c '(la ny bos)
+    (choose-bind s '(1 2)
+      (choose-bind b '(1 2)
+        (=values (list c s b))))))
+
+
+(=defn find-boxes []
+  (=bind [triple] (gen-sent-candy-log)
+    (let [t (first triple)
+          city_current (first t)
+          flg (coin? t)]
+
+      (when-not (= city_current @city)
+        (print t (if flg "C\n" ""))
+        (reset! city (if flg city_current "")))
+
+      (fail))
+))

@@ -1,0 +1,102 @@
+;;========================
+;; a time flies like her
+;;========================
+
+(def np nil)
+(def np2 nil)
+
+(def np-det nil)
+(def pron nil)
+(def np-mods nil)
+(def np-n nil)
+(def np-pp nil)
+
+(def mods nil)
+(def mods-n nil)
+
+(def _pp nil)
+(def _pp-prep nil)
+(def _pp-np nil)
+
+;;---------------------
+
+(do
+
+  (defnode np
+    ;; step1
+    (category det np-det
+      (setr det w))) ;; a
+
+  (defnode np2
+    ;; step10
+    (category pron pron
+      (setr n2 w))) ;; her
+
+  (defnode pron
+    ;; step11
+    (up `(~'np (~'pronoun ~(getr n2)))))
+
+  (defnode np-det
+    ;; step2, 5
+    (down mods np-mods
+      (setr mods w)))
+
+  (defnode np-mods
+    ;; step6
+    (category n np-n
+      (setr n w))) ;; flies
+
+  (defnode np-n
+    ;; step7, 14
+    (down _pp np-pp
+      (setr pp w)))
+
+  (defnode np-pp
+    ;; step15
+    (up `(~'np
+          (~'det ~(getr det))
+          (~'modifiers ~(getr mods))
+          (~'noun ~(getr n))
+          ~(getr pp))))
+
+;;---------------------
+
+    (defnode mods
+      ;; step3
+      (category n mods-n
+        (setr mods w))) ;; time
+
+    (defnode mods-n
+      ;; step4
+      (up `(~'n-group
+            ~(getr mods))))
+
+;;---------------------
+
+    (defnode _pp
+      ;; step8
+      (category prep _pp-prep
+        (setr prep w))) ;; like
+
+    (defnode _pp-prep
+      ;; step9, 12
+      (down np2 _pp-np
+        (setr op w)))
+
+    (defnode _pp-np
+      ;; step13
+      (up `(~'pp (~'prep ~(getr prep))
+                   (~'obj ~(getr op)))))
+
+;;---------------------
+
+  (with-parses np '(a time flies like her) (clojure.pprint/pprint parse)))
+
+;;=====================
+;; (np
+;;  (det a)
+;;  (modifiers (n-group time))
+;;  (noun flies)
+;;  (pp (prep like) (obj (np (pronoun her)))))
+;; [end]
+;;=====================

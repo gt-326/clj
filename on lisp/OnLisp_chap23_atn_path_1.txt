@@ -1,0 +1,47 @@
+;;=====================
+;; like him
+;;=====================
+
+(def _pp nil)
+(def _pp-prep nil)
+(def np nil)
+(def pron nil)
+(def _pp-np nil)
+
+;;---------------------
+
+(do
+
+  (defnode _pp
+    ;; step1
+    (category prep _pp-prep
+      (setr prep w))) ;; like
+
+  (defnode _pp-prep
+    ;; step2, 5
+    (down np _pp-np
+      (setr op w)))
+
+    ;; nested part ==================
+    (defnode np
+      ;; step3
+      (category pron pron
+        (setr n w))) ;; him
+
+    (defnode pron
+      ;; step4
+      (up `(~'np (~'pronoun ~(getr n)))))
+    ;; ==============================
+
+  (defnode _pp-np
+    ;; step6
+    (up `(~'pp (~'prep ~(getr prep))
+                    (~'obj ~(getr op)))))
+
+  (with-parses _pp '(like him) (clojure.pprint/pprint parse)))
+
+;;=====================
+;; (pp (prep like)
+;;     (obj (np (pronoun him))))
+;; [end]
+;;=====================

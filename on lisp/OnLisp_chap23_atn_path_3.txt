@@ -1,0 +1,136 @@
+;;===================================
+;; time flies like an arrow （その１）
+;;===================================
+
+(def s nil)
+(def v nil)
+(def s-obj nil)
+(def s-subj nil)
+
+(def np nil)
+(def pron nil)
+
+(def np-det nil)
+(def np-mods nil)
+(def np-n nil)
+
+(def np2 nil)
+(def np-det2 nil)
+(def np-mods2 nil)
+(def np-n2 nil)
+
+(def mods nil)
+(def mods-n nil)
+
+;;---------------------
+
+(do
+
+  (defnode s
+    ;; step1, 9
+    (down np s-subj
+      (setr mood decl)
+      (setr subj w)))
+
+  (defnode s-subj
+    ;; step10
+    (category v v
+      (setr aux nil)
+      (setr v w)))  ;; like
+
+  (defnode v
+    ;; step11, 16
+    (down np2 s-obj
+      (setr obj w)))
+
+  (defnode s-obj
+    ;; step17
+    (up `(~'s (~'mood ~(getr mood))
+               (~'subj ~(getr subj))
+               (~'vcl (~'aux ~(getr aux))
+                      (~'v ~(getr v)))
+               (~'obj ~(getr obj)))))
+
+;;---------------------
+
+  (defnode np
+
+;; _step10
+;;    (category det np-det2
+;;      (setr det w))
+
+    ;; step2
+    (jump np-det
+      (setr det nil)))
+
+  (defnode np-det
+    ;; step3, 6
+    (down mods np-mods
+      (setr mods w))
+
+;; _step11
+;;    (jump np-mods
+;;      (setr mods nil))
+      )
+
+  (defnode np-mods
+    ;; step7
+    (category n np-n
+      (setr n w)))    ;; flies
+
+  (defnode np-n
+    ;; step8
+    (up `(~'np (~'det ~(getr det))
+                (~'modifiers ~(getr mods))
+                (~'noun ~(getr n)))))
+
+  (defnode np2
+    ;; step12
+    (category det np-det2
+      (setr det2 w))  ;; an
+
+;; _step2
+;;    (jump np-det
+;;      (setr det nil))
+      )
+
+  (defnode np-det2
+    ;; step13
+    (jump np-mods2
+      (setr mods2 nil)))
+
+  (defnode np-mods2
+    ;; step14
+    (category n np-n2
+      (setr n2 w)))    ;; arrow
+
+  (defnode np-n2
+    ;; step15
+    (up `(~'np (~'det ~(getr det2))
+                (~'modifiers ~(getr mods2))
+                (~'noun ~(getr n2)))))
+
+;;---------------------
+
+    (defnode mods
+      ;; step4
+      (category n mods-n
+        (setr mods w))) ;; time
+
+    (defnode mods-n
+      ;; step5
+      (up `(~'n-group
+            ~(getr mods))))
+
+;;---------------------
+
+  (with-parses s '(time flies like an arrow) (clojure.pprint/pprint parse)))
+
+;;=====================
+;; (s
+;;  (mood decl)
+;;  (subj (np (det nil) (modifiers (n-group time)) (noun flies)))
+;;  (vcl (aux nil) (v like))
+;;  (obj (np (det an) (modifiers nil) (noun arrow))))
+;; [end]
+;;=====================

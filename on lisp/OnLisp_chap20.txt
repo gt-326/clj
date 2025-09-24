@@ -1,0 +1,174 @@
+;; chap20.2 (P274)
+
+
+(def ^:dynamic *cont* identity)
+
+
+;; 改変した
+;; 名前 =lambda は長すぎるので
+
+(defmacro =fn
+  [params & body]
+  `(fn [~'*cont* ~@params]
+     ~@body))
+
+
+;; 改変した
+;; ここで *cont* を渡そうとすると、その書き換えがうまくいかない
+
+(defmacro =defn [name params & body]
+  (let [n (symbol (str "=" name))]
+    `(do
+　　　　;; 関数部分
+　　　　;; (defn ~n [*cont* ~@params] ~@body)
+       (defn ~n [~@params] ~@body)
+
+　　　　;; マクロ部分
+　　　　;; (defmacro ~name ~params `(~~n *cont* ~~@params))
+       (defmacro ~name ~params `(~~n ~~@params))
+)))
+
+
+(defmacro =bind [params expr & body]
+  `(binding [*cont* (fn ~params ~@body)]
+     ~expr))
+
+
+(defmacro =values [& retvals]
+  `(*cont* ~(vec retvals)))
+
+
+(defmacro =fncall
+  [fnc & args]
+  `(~fnc *cont* ~@args))
+
+
+(defmacro =apply
+  [fnc & args]
+  `(apply ~fnc *cont* ~@args))
+
+
+(comment
+
+  foo.core> *cont*
+  #function[clojure.core/identity]
+
+  foo.core> ((fn [n]
+               (do
+                 (println "state1:" (*cont* n))
+                 (binding [*cont* inc]
+                   (println "state2:" (*cont* n)))))
+              10)
+
+  state1: 10
+  state2: 11
+  nil
+
+;; foo.core> ((=fn (a b) (list *cont* a b)) 1 2 3)
+;; (1 2 3)
+
+;; foo.core> (count (=fncall list 1 2 3))
+;; 4
+
+;; foo.core> (clojure.core/apply list foo.core/*cont* (list 1 2 3))
+;; (#object[clojure.core$identity 0x5eb36f59 "clojure.core$identity@5eb36f59"] 1 2 3)
+
+)
+
+
+;; chap20.2 (P278)
+
+
+(defn dft
+  [tree]
+  (if (list? tree)
+    (if (empty? tree)
+      ()
+      (do
+        (dft (first tree))
+        (dft (rest tree))))
+
+    (println tree)))
+
+
+(def saved (atom []))
+
+
+(=defn restart []
+       (if (seq @saved)
+         (let [fnc (peek @saved)]
+           ;; POP
+           (reset! saved (pop @saved))
+           (fnc))
+         (=values 'done)))
+
+
+;; 改変した
+;; 引数「CONT」は、呼び出し元にて *cont* をもらうためのもの
+;; =defn で設定しようとすると、*cont* の書き換えがうまくいかない
+
+(=defn dft-node [CONT tree]
+       (if (list? tree)
+         ;; list
+         (if (empty? tree)
+           (restart)
+           (do
+             ;; ガードが必要
+             (if (seq (rest tree))
+               (reset!
+                saved
+                (conj
+                 @saved
+                 (fn [] (dft-node CONT (rest tree))))))
+             (dft-node CONT (first tree))))
+
+         ;; not list
+         (CONT tree)))
+
+
+(=defn dft2 [t1 t2]
+       (do
+         (reset! saved [])
+
+         (=bind [node1] (dft-node *cont* t1)
+             (do
+                (println)
+                (=bind [node2] (dft-node *cont* t2)
+                       (if (= node2 '[done])
+                         (do
+                           (println)
+                           node2)
+                         (do
+                           (print (list node1 node2) "")
+                           (restart)))))
+         )))
+
+(comment
+
+
+
+
+
+)
+
+
+
+
+;; chap20.3 (P279)
+
+(defn revc3
+  ([lst] (revc3 lst identity))
+  ([lst fnc]
+   (loop [x lst
+          cont identity]
+     (if (empty? x)
+       (cont x)
+       (recur
+         (rest x)
+         (fn [w]
+           (cont
+             (concat w (list
+                         (if (list? (first x))
+                           ;; 入れ子対応
+                           (revc3 (first x) fnc)
+                           (fnc (first x))))))))))))

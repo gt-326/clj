@@ -1,0 +1,214 @@
+(def failsym '[end])
+
+(def ^:dynamic *paths* (atom []))
+
+(def ^:dynamic *sent* (atom []))
+
+(def ^:dynamic *conts* (atom [identity]))
+
+(def ^:dynamic *regs* (atom '()))
+
+(defmacro with-gensyms [syms & body]
+ `(let [~@(apply
+            concat
+            (map (fn [s] `(~s (gensym))) syms))]
+   ~@body))
+
+(defmacro choose
+  [& choices]
+  (if (seq choices)
+    `(do
+       ~@(map
+           (fn [c]
+             `(reset!
+                *paths*
+                (conj
+                  (deref *paths*)
+                  #(~@c))))
+           (reverse (rest choices)))
+
+       ~(first choices))
+    `(fail)))
+
+(defn fail
+  []
+  (if (empty? (deref *paths*))
+    failsym
+    (let [fnc (peek (deref *paths*))]
+      ;; POP
+      (reset! *paths* (pop (deref *paths*)))
+      (fnc))))
+
+(defmacro =defn [name params & body]
+  (let [n (symbol (str "=" name))]
+    `(do
+       　　　　;; 関数部分
+       　　　　;; (defn ~n [*cont* ~@params] ~@body)
+       (defn ~n [~@params] ~@body)
+
+       　　　　;; マクロ部分
+       　　　　;; (defmacro ~name ~params `(~~n *cont* ~~@params))
+       (defmacro ~name ~params `(~~n ~~@params))
+       )))
+
+(defmacro =bind5 [params expr & body]
+  `(let [~'cont (fn ~params ~@body)]
+     ;;(println "=bind5:" ~'cont ~expr)
+     (reset! *conts* (conj (deref *conts*) ~'cont))
+     ~expr))
+
+;;==========
+
+(defmacro defnode [name & arcs]
+  `(=defn ~name [~'pos ~'regs] (choose ~@arcs)))
+
+;;==========
+
+;; = dictionary-word2
+
+(defn dictionary-word [word]
+  (case word
+    (do does did) '(aux v)
+    (time times) '(n v)
+    (fly flies) '(n v)
+    (like) '(v prep)
+    (liked likes) '(v)
+    (a an the) '(det)
+    (arrow arrows) '(n)
+    (i you he she him her it) '(pron)
+
+    (spot) '(noun)
+    (runs) '(verb)
+    '()))
+
+;;=======================
+
+;; = getr4
+
+(defmacro getr [k & [arg_r]]
+  `(let [~'r (or ~arg_r ~'regs)
+         ~'result
+          (rest
+            (some
+              (fn [x#] (and (= '~k (first x#)) x#))
+              (first ~'r)))]
+
+;;      (println "getr:" '~k ":" ~'r)
+
+       (if (seq (rest ~'result))
+         ~'result
+         (first ~'result))
+))
+
+;;================================================
+;; 「getr4」に対応させるためのもの（'~regs のとこ）
+;;================================================
+
+;; set-register4
+
+(defn set-register [acc [opr k v]]
+  (let [r
+    (case opr
+      ;; setr
+      setr2
+        (cons k (list v))
+
+      ;; pushr
+      pushr
+        (cons k
+          (cons v
+            (rest
+              (some
+                (fn [x#] (and (= k (first x#)) x#))
+                (first acc))))))]
+    (cons
+      (cons r (first acc))
+        (rest acc))))
+
+(defn convert-special-word [words_log alt]
+  (loop [pairs (first words_log)
+         acc ()]
+    (if (empty? pairs)
+       (list acc)
+       (recur
+         (rest pairs)
+         (cons
+           (for[word (first pairs)]
+             (if (and (= word 'w) alt) alt word))
+           acc)))))
+
+(defn gen-reg-data
+  ([cmds] (gen-reg-data cmds nil))
+  ([cmds alt]
+    (let [words (reduce set-register @*regs* cmds)
+          reg_upd (convert-special-word words alt)]
+      ;; 履歴に追加
+      (reset! *regs* reg_upd)
+      @*regs*)))
+
+
+;;=======================
+;;　regs の形式変更対応：
+;;　　(setr prep like (setr n flies ())) -> '(((prep like) (n flies)))
+;;=======================
+
+;; = category5
+
+(defmacro category [cat next & cmds]
+  `(if (= (count @*sent*) ~'pos)
+    (fail)
+    (let [~'alt (nth @*sent* ~'pos "nothing found")]
+      (if (some (fn [x#] (= x# '~cat)) (dictionary-word ~'alt))
+        (~next (inc ~'pos) (gen-reg-data '~cmds ~'alt))
+        (fail)))))
+
+;; = down5
+
+(defmacro down [sub next & cmds]
+  `(=bind5 [~'w ~'pos ~'regs]
+    (~sub ~'pos ~'regs)
+    (~next ~'pos (gen-reg-data '~cmds ~'w))))
+
+;; = jump2
+
+(defmacro jump [next & cmds]
+  `(~next ~'pos (gen-reg-data '~cmds)))
+
+;; = up5
+
+(defmacro up [expr]
+  `(let [~'w (nth @*sent* ~'pos "nothing found")
+         ~'cont (peek (deref *conts*))]
+
+    ;;(println "up:" ~'cont ~'pos ~'regs)
+
+    (if (= identity ~'cont)
+      (fail)
+      (do
+        ;; pop
+        (reset! *conts* (pop (deref *conts*)))
+        ;; 呼び出し元へ処理結果を返す
+        (~'cont ~expr ~'pos (rest ~'regs))
+        ))
+))
+
+;;=======================
+
+;; = with-parses3
+
+(defmacro with-parses [node sent & body]
+  (with-gensyms (pos regs)
+    `(do
+      (reset! *sent* ~sent)
+      (reset! *conts* [identity])
+      (reset! *regs* '())
+
+      (=bind5 [~'parse ~pos ~regs] (~node 0 '())
+        (do
+;;          (println "with-parses:" ~'parse ~pos ~regs (count @*sent*))
+
+          (if (= ~pos (count @*sent*))
+            ~@body)
+          (fail))))))
+
+;;=======================
