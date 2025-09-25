@@ -64,8 +64,6 @@
 
 ;;==========
 
-;; = dictionary-word2
-
 (defn dictionary-word [word]
   (case word
     (do does did) '(aux v)
@@ -83,8 +81,6 @@
 
 ;;=======================
 
-;; = getr4
-
 (defmacro getr [k & [arg_r]]
   `(let [~'r (or ~arg_r ~'regs)
          ~'result
@@ -100,11 +96,6 @@
          (first ~'result))
 ))
 
-;;================================================
-;; 「getr4」に対応させるためのもの（'~regs のとこ）
-;;================================================
-
-;; set-register4
 
 (defn set-register [acc [opr k v]]
   (let [r
@@ -152,8 +143,6 @@
 ;;　　(setr prep like (setr n flies ())) -> '(((prep like) (n flies)))
 ;;=======================
 
-;; = category5
-
 (defmacro category [cat next & cmds]
   `(if (= (count @*sent*) ~'pos)
     (fail)
@@ -162,19 +151,13 @@
         (~next (inc ~'pos) (gen-reg-data '~cmds ~'alt))
         (fail)))))
 
-;; = down5
-
 (defmacro down [sub next & cmds]
   `(=bind5 [~'w ~'pos ~'regs]
     (~sub ~'pos ~'regs)
     (~next ~'pos (gen-reg-data '~cmds ~'w))))
 
-;; = jump2
-
 (defmacro jump [next & cmds]
   `(~next ~'pos (gen-reg-data '~cmds)))
-
-;; = up5
 
 (defmacro up [expr]
   `(let [~'w (nth @*sent* ~'pos "nothing found")
@@ -193,8 +176,6 @@
 ))
 
 ;;=======================
-
-;; = with-parses3
 
 (defmacro with-parses [node sent & body]
   (with-gensyms (pos regs)
