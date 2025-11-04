@@ -1,0 +1,68 @@
+;; ==================
+
+(defn gen-then
+  [then]
+  (let [t (if (list? then) (cons 'list then) then)]
+    `(let [~@(mapcat
+              (fn [v] `(~(symbol v) (~(keyword v) ~'it)))
+              (vars-in then))]
+      ~t)))
+
+(defmacro if-match2
+  [pat seq then & else]
+  (list
+    'aif2
+    ;; 明示的に list でくるむ必要がある
+    ;; (list (match '~pat '~seq))
+    (list {:x '~'hi, :y '~'ho})
+    (gen-then then)
+    (cons 'do else)))
+
+(defn abab6
+  [s]
+  (if-match2 (?x ?y) s [x y z] "abab6"))
+
+
+…なるほど。
+やっぱり「match」の呼び出しが重たいせいで、マクロが呼ばれなかったみたい。
+
+期待通りの動きをしてくれた。
+
+foo.core> (abab6 '(hi ho))
+[hi ho nil]
+
+
+;; ==================
+
+すんげー苦労して、やっと動くコードにたどり着けた。
+
+(defmacro if-match3
+  [test then & else]
+  (list
+    'aif2
+    ;; 明示的に list でくるんでクォートするのはマクロ側でやる
+    `(list ~test)
+    ;; ここでやる
+    (gen-then then)
+    (cons ‘do else)))
+
+(defn abab2
+  [s]
+  (if-match3
+    (match '(?x ?y) s)
+    [x y z]))
+
+
+…こうして見ると、あまりにシンプルすぎて拍子抜けするほど。
+暗闘の末に得た結論は以下です。
+
+  ・「match」は、関数側で実行する（list で包むのはマクロ側でやる）
+  ・「gen-then」は、マクロ側で実行する
+
+ということで、以下のように、マクロ、関数どちらも同じ結果を得られることを確認できました。
+
+foo.core> (if-match3 (match '(?x ?y) '(hi ho)) [x y z])
+[hi ho nil]
+
+foo.core> (abab2 '(hi ho))
+[hi ho nil]

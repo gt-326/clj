@@ -1,0 +1,303 @@
+;; 「18.3 参照」
+
+;;「tools.macro/symbol-macrolet」を使おうと、七転八倒していた。
+;; 一旦、パス！
+
+;; 「18.4 マッチング」
+
+;; =============
+;; 既出のマクロが登場
+;; =============
+
+(defmacro multiple-value-bind_
+  [binds seq & body]
+  `(let [[~@(map #(symbol %) binds)] ~seq]
+     ~@body))
+
+
+(defmacro multiple-value-bind_ver1
+  [binds seq & body]
+  `(let [[~@(map #(symbol %) binds)]
+         (if ~(list? seq) ~seq (list ~seq))]
+     ~@body))
+
+
+(defmacro multiple-value-bind_ver2
+  [binds seq & body]
+  `(let [[~@(map #(symbol %) binds)]
+         (if ~(sequential? seq) ~seq (list ~seq))]
+     ~@body))
+
+
+(defmacro multiple-value-bind_ver3
+  [binds seq & body]
+  `(let [;; gensym 部分
+         ~@(mapcat #(list (symbol %) '(gensym)) binds)
+         ;; bind 部分
+         [~@(map #(symbol %) binds)]
+         (if ~(sequential? seq) ~seq (list ~seq))]
+     ~@body))
+
+;; =============
+
+(defmacro aif
+  [test-form then-form & else-form]
+  `(let [~‘it ~test-form]
+    (if ~'it
+      ~then-form
+      (do ~@else-form))))
+
+(defmacro aif2
+  [test & then-else]
+  (let [[then else] then-else]
+    `(multiple-value-bind_ver3
+      (~'it ~'win)
+      ~test
+      (if (or ~'it ~'win) ~then ~else))))
+
+;; =============
+
+(defmacro acond
+  [& clauses]
+  (when (seq clauses)
+    (let [[cl1 cl2] (take 2 clauses)]
+      `(let [sym# ~cl1]
+         (if sym#
+           (let [~'it sym#] ~cl2)
+           (acond ~@(drop 2 clauses)))))))
+
+
+(defmacro acond2
+  [& clauses]
+  (when (seq clauses)
+    (let [[cl1 cl2] (take 2 clauses)]
+      `(multiple-value-bind_ver2
+         (val# win#)
+         ~cl1
+         (if (or val# win#)
+           (let [~'it val#] ~cl2)
+           (acond2 ~@(drop 2 clauses)))))))
+
+
+(defmacro acond3
+  [& clauses]
+  (when (seq clauses)
+    (let [[cl1 cl2] (take 2 clauses)]
+      `(multiple-value-bind_ver3
+         (~'val ~'win)
+         ~cl1
+         (if (or ~'val ~'win)
+           (let [~'it ~'val] ~cl2)
+           (acond3 ~@(drop 2 clauses)))))))
+
+
+(defmacro acond4
+  [variables & clauses]
+  (when (seq clauses)
+    (let [[cl1 cl2] (take 2 clauses)]
+      (if (seq variables)
+        `(multiple-value-bind_ver3
+           ~variables
+           ~cl1
+           (if (or ~@variables)
+             (let [~'it ~(first variables)] ~cl2)
+             (acond4 ~variables ~@(drop 2 clauses))))
+
+        `(if ~cl1
+           (let [~'it ~cl1] ~cl2)
+           (acond4 ~variables ~@(drop 2 clauses)))))))
+
+
+;; =============
+
+(defn varsym?
+  [x]
+  (and (symbol? x)
+       (= \?
+          (first (name x)))))
+
+(defn my-binding
+  [x binds]
+  (letfn [(rec-bind
+          [x binds]
+          (aif (get binds x)
+              (or (rec-bind (rest it) binds)
+                  it)))]
+
+
+    ;; Common lisp は多値を返すので、ベクタを返すものかと思ってたけれど。
+    ;; …以下のようにしないと、どうも具合が悪いみたい。
+    ;; (let [[b a] (rec-bind x binds)]
+    ;;   [a b])
+    (rec-bind (keyword x) binds)))
+
+
+
+
+(defn gensym?
+  [s]
+  (and (symbol? s)
+       ;; 文字列操作をする前のガード
+       (>= (count (name s)) 3)
+       (= "G__" (subs (name s) 0 3))))
+
+
+;; (let [a (gensym)] a)
+;; => G__10675
+
+;; (gensym? (let [a (gensym)] a))
+;; => true
+
+
+;; (let [a (gensym)]
+;;   (let [a 1] a))
+;; => 1
+
+
+;; (gensym? (let [a (gensym)]
+;;            (let [a 1] a)))
+;; => false
+
+
+(defn simple?
+  [x]
+  (not
+    (or (and (seqable? x) (seq x))
+        (= \? (first (name x))))))
+
+
+;; (map simple? '(?a b '(c) d#))
+;; => (false true false true)
+
+;; ==================
+
+(defn match
+  ([x y] (match x y {}))
+  ([x y binds]
+
+     ;; よくよく見てみると、「acond」でこと足りるはずなんだけど、
+     ;; なんでだか本のコードは「acond2」を使っている。
+    (acond4
+      ;; [args: variables]
+      nil
+
+      ;; [args: clauses]
+      (or (= x y) (= x '_) (= y '_)) binds
+
+      (my-binding x binds) (match it y binds)
+      (my-binding y binds) (match x it binds)
+
+      (varsym? x)
+        (assoc binds (keyword (apply str (next (name x))))
+          (if (varsym? y)
+            (symbol (apply str (next (name y))))
+            y))
+      (varsym? y)
+        (assoc binds (keyword (apply str (next (name y))))
+          (if (varsym? x)
+            (symbol (apply str (next (name x))))
+            x))
+
+      (and (seqable? x)
+          (seqable? y)
+          (match (first x) (first y) binds))
+        (match (next x) (next y) it)
+
+      :else nil)))
+
+;; ==================
+
+(defn vars-in
+  ([expr] (vars-in expr #(not (and (seqable? %) (seq %)))))
+  ([expr atom?]
+    (if (atom? expr)
+      (if (varsym? expr)
+        #{(apply str (next (name expr)))}
+        (when expr #{(name expr)}))
+
+      (clojure.set/union
+        (vars-in (first expr) atom?)
+        (vars-in (next expr) atom?)))))
+
+(defmacro if-match
+  [pat seq then & else]
+  (let [t (if (list? then) (list ~@then) then)]
+    `(aif2
+      ;; 明示的に list でくるむ必要がある
+      (list (match '~pat '~seq))
+      (let [~@(mapcat
+              (fn [v]
+                `(~(symbol v) (my-binding ~(keyword v) ~'it)))
+              (vars-in then))]
+        ~t)
+        (do ~＠else))))
+
+
+;; foo.core> (if-match (?x ?y) (hi ho) x)
+;; hi
+
+;; foo.core> (if-match (?x ?y) (hi ho) [x y])
+;; [hi ho]
+
+;; foo.core> (if-match '(?x ?y) '(hi ho) (x y z))
+;; (hi ho nil)
+
+
+;; ==================
+
+(defn abab_
+  []
+  (if-match (?x ?y) (hi ho) [x y z]))
+
+;; 上記だと問題なく動く。
+
+foo.core> (abab_)
+[hi ho nil]
+
+(defn abab
+  [s]
+  (if-match (?x ?y) s [x y z]))
+
+foo.core> (abab '(hi ho))
+nil
+
+…この「nil」ってなんだろう？どっから出てるんだろう？
+いろいろ調べてみると、こういうことらしい。
+
+(defn abab2
+  [s]
+  (if-match (?x ?y) s [x y z] "abab2"))
+
+foo.core> (abab2 '(hi ho))
+“abab2”
+
+「if-match」の呼び出しが行われず、末尾の要素を返しているだけって！？
+
+(defn abab3
+  [s]
+  (list 'if-match '(?x ?y) s '[x y z]))
+
+foo.core> (abab3 '(hi ho))
+(if-match (?x ?y) (hi ho) [x y z])
+
+「if-match」が見えていないわけではないみたい。
+試しに eval を明示的に掛けてみると、ちゃんと動作する。
+
+(defn abab4
+  [s]
+  (eval (list 'if-match '(?x ?y) s '[x y z])))
+
+foo.core> (abab4 '(hi ho))
+[hi ho nil]
+
+
+でも、これだとダメだった。
+
+(defn abab5
+  [s]
+  (eval (if-match (?x ?y) s [x y z] "abab5")))
+
+foo.core> (abab5 '(hi ho))
+“abab5”
+
+…むーん。

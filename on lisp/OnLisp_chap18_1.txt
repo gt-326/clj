@@ -1,0 +1,154 @@
+(defn destruc
+  [arg_pat arg_seq fnc n is-nested]
+  (when (seq arg_pat)
+    (let [more (cond (= (first arg_pat) '&) (first (rest arg_pat))
+                     ;; last item of nested seq
+                     (and is-nested (empty? (rest arg_pat))) (first arg_pat)
+                     (fnc arg_pat) arg_pat
+                     :else nil)
+          ;; gensym したシンボル（var）にはクォートを掛けたくない
+          target (if (symbol? arg_seq) arg_seq `'~arg_seq)]
+      (if more
+        `((~more (drop ~n ~target)))
+        (let [rec (destruc (rest arg_pat) arg_seq fnc (inc n) is-nested)
+              p (first arg_pat)]
+          (if (fnc p)
+            (cons `(~p (nth ~target ~n)) rec)
+            (let [var (gensym)]
+              (concat
+                (cons `(~var (nth ~target ~n)) rec)
+                ;; nested seq
+                (destruc p var fnc 0 true)))))))))
+
+
+(defn call_destruc
+  [arg_pat arg_seq & [fnc n]]
+  (let [fnc (or fnc #(not (and (seqable? %) (seq %))))
+        n (or n 0)]
+    (destruc arg_pat arg_seq fnc n false)))
+
+
+(defn dbind-ex
+  [binds body]
+  (if (empty? binds)
+    `(do ~@body)
+    `(let [~@(mapcat
+               #(if (list? (first %)) (first %) %)
+               binds)]
+       ~(dbind-ex
+          (mapcat
+            #(when (list? (first %)) (rest %))
+            binds)
+          body))))
+
+
+(defmacro dbind
+  [arg_pat arg_seq & body]
+  (dbind-ex (call_destruc arg_pat arg_seq) body))
+
+;; =============
+
+(dbind-ex '((a (nth seq 0))
+            ((g2 (nth seq 1))
+             (b (nth g2 0))
+             (c (drop 1 g2)))
+            (d (drop 2 seq)))
+          '((list a b c d)))
+
+
+;; => (clojure.core/let
+;;     [a (nth seq 0) g2 (nth seq 1) d (drop 2 seq)]
+;;     (clojure.core/let [b (nth g2 0) c (drop 1 g2)] (do (list a b c d))))
+
+
+
+(call_destruc '(a b c) '(1 (x y z) 2 3))
+
+
+;; => ((a (clojure.core/nth '(1 (x y z) 2 3) 0))
+;;     (b (clojure.core/nth '(1 (x y z) 2 3) 1))
+;;     (c (clojure.core/nth '(1 (x y z) 2 3) 2)))
+
+
+(call_destruc '(a (b c) & d) 'seq)
+
+
+;; => ((a (clojure.core/nth seq 0))
+;;     (G__10053 (clojure.core/nth 'seq 1))
+;;     (d (clojure.core/drop 2 seq))
+;;     (b (clojure.core/nth G__10053 0))
+;;     (c (clojure.core/drop 1 G__10053)))
+
+(call_destruc '(a (b c) & d) '(1 (x y z) 2 3))
+
+
+;; => ((a (clojure.core/nth '(1 (x y z) 2 3) 0))
+;;     (G__10056 (clojure.core/nth '(1 (x y z) 2 3) 1))
+;;     (d (clojure.core/drop 2 '(1 (x y z) 2 3)))
+;;     (b (clojure.core/nth G__10056 0))
+;;     (c (clojure.core/drop 1 G__10056)))
+
+
+(macroexpand-1 '(dbind (a (b c) & d) (1 (2 3) 4) (list a b c d)))
+
+
+;; => (clojure.core/let
+;;     [a
+;;      (clojure.core/nth '(1 (2 3) 4) 0)
+;;      G__10059
+;;      (clojure.core/nth '(1 (2 3) 4) 1)
+;;      d
+;;      (clojure.core/drop 2 '(1 (2 3) 4))
+;;      b
+;;      (clojure.core/nth G__10059 0)
+;;      c
+;;      (clojure.core/drop 1 G__10059)]
+;;     (do (list a b c d)))
+
+;; =============
+
+(defmacro with-matrix
+  [pats ar & body]
+  (let [gar (gensym)
+        row (atom -1)
+        col (atom -1)]
+    `(let [~gar ~ar
+           ~@(mapcat
+               (fn [pat]
+                 (do
+                   (swap! row inc)
+                   (reset! col -1)
+                   (mapcat
+                     (fn [p]
+                       (do
+                         (swap! col inc)
+                         `(~p (get-in ~gar ~[@row @col]))))
+                     pat)))
+               pats)]
+       ~@body)))
+
+
+(defmacro with-array
+  [pat ar & body]
+  (let [gar (gensym)]
+    `(let [~gar ~ar
+           ~@(mapcat
+               (fn [[sym & idx]]
+                 `(~sym (get-in ~gar ~(vec idx))))
+               pat)]
+       ~@body)))
+
+(defmacro with-struct
+  [fields struct & body]
+  (let [gs (gensym)]
+    `(let [~gs ~struct
+           ~@(mapcat
+               (fn [f]
+                 `(~f (~(keyword f) ~gs)))
+               fields)]
+       ~@body)))
+
+(defrecord visitor
+  [name title firm])
+
+(def theo (->visitor "Theodebert" 'king 'franks))
