@@ -44,7 +44,7 @@ foo.core> (abab6 '(hi ho))
     `(list ~test)
     ;; ここでやる
     (gen-then then)
-    (cons ‘do else)))
+    (cons 'do else)))
 
 (defn abab2
   [s]

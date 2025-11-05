@@ -42,7 +42,7 @@
 
 (defmacro aif
   [test-form then-form & else-form]
-  `(let [~‘it ~test-form]
+  `(let [~'it ~test-form]
     (if ~'it
       ~then-form
       (do ~@else-form))))
