@@ -1,0 +1,117 @@
+;; chap21.2 (P288)
+
+(def ^:dynamic *bboard* (atom nil))
+
+
+(defn claim
+  [& f]
+  (if (seq f)
+    (swap! *bboard* conj f)))
+
+
+(defn unclaim
+  [& f]
+  (if (seq f)
+    (swap! *bboard* #(remove #{f} %))))
+
+
+(defn check
+  [& f]
+  (if (seq f)
+    (first (filter #(= % f) @*bboard*))))
+
+
+(defn visitor
+  [door]
+  (do
+    (print "\nApproach" door ". ")
+    (claim 'knock door)
+    (wait d (check 'open door)
+          (print "Enter" door ". ")
+          (unclaim 'knock door)
+          (claim 'inside door))))
+
+
+(defn host
+  [door]
+  (do
+    (wait k (check 'knock door)
+          (print "Open" door ". ")
+          (claim 'open door)
+          (wait g (check 'inside door)
+
+                (print "Close" door ".")
+                (unclaim 'open door)))))
+
+
+(program ballet ()
+         (fork (visitor 'door1) 1)
+         (fork (host 'door1) 1)
+         ;; (println)
+
+         (fork (visitor 'door2) 1)
+         (fork (host 'door2) 1)
+         ;; (println)
+         )
+
+
+(comment
+
+  foo.core> (ballet)
+  ;; Approach door2 . Open door2 . Enter door2 . Close door2 .
+  ;; Approach door1 . Open door1 . Enter door1 . Close door1 .
+
+  )
+
+
+(defn my-take
+  [c]
+  (println "Liberating" c "."))
+
+
+(defn fortify
+  [c]
+  (println "Rebuilding" c "."))
+
+
+(defn loot
+  [c]
+  (println "Nationalizing" c "."))
+
+
+(defn ransom
+  [c]
+  (println "Refinancing" c "."))
+
+
+(defn capture
+  [city]
+  (do
+    (my-take city)
+    ;; pri: 100 -> 1
+    (setpri 1)
+    (yield
+      (fortify city))))
+
+
+(defn plunder
+  [city]
+  (do
+    (loot city)
+    (ransom city)))
+
+
+(program barbarians ()
+         (fork (capture 'ROME) 100)
+         (fork (plunder 'ROME) 98))
+
+
+(comment
+
+  foo.core> (barbarians)
+  ;; Liberating ROME .
+  ;; Nationalizing ROME .
+  ;; Refinancing ROME .
+  ;; Rebuilding ROME .
+
+  )

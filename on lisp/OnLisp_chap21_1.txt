@@ -1,0 +1,268 @@
+;; chap21.1 (P283)
+
+(def ^:dynamic *halt* (gensym))
+
+(def ^:dynamic *procs* (atom nil))
+
+(def ^:dynamic *proc* (atom nil))
+
+
+(defrecord Proc
+  [pri state wait])
+
+
+(defn make-proc
+  [& {:keys [pri state wait]
+      :as p}]
+  (map->Proc p))
+
+
+(declare pick-process)
+
+
+(def ^:dynamic *default-proc*
+  (make-proc
+    :state
+    (fn ; [x]
+      [& x]
+      (do
+        (print "\n>> ")
+        ;; (prn (eval (read)))
+        (println (eval (read)))
+
+        (pick-process)))))
+
+
+(defmacro fork
+  [expr pri]
+  `(let [expr# '~expr
+         p# (make-proc
+              :state (fn [& g#] (do ~expr (pick-process)))
+              :pri   ~pri)]
+
+     ;; (println "cnt procs [before]:" (count @*procs*))
+     (swap! *procs* conj p#)
+     ;; (println "cnt procs [after]:" (count @*procs*))
+
+     ;; can not understand what this part means
+     expr#))
+
+
+
+(defmacro program
+  [name args & body]
+  `(defn ~name [~@args]
+     (try
+       ;; 初期化（中断したプロセスを消去する）
+       (reset! *procs* nil)
+       ;; ここでプロセスを追加している想定？
+       ~@body
+       ;; 優先度に応じて登録されたプロセスを実行する？
+       (loop [] (pick-process))
+
+       (catch Exception ~'ex
+         (if (= (str *halt*) (.getMessage ~'ex))
+           (str "[On Lisp] [chap.21 multi process] system halt: " (.getData ~'ex))
+           (str "normal exeption: " (.getMessage ~'ex)))))))
+
+
+;; chap21.1 (P284)
+
+
+(defmacro multiple-value-bind_ver3
+  [binds seq & body]
+  `(let [;; gensym 部分
+         ~@(mapcat #(list (symbol %) '(gensym)) binds)
+         ;; bind 部分
+         [~@(map #(symbol %) binds)]
+         (if ~(sequential? seq) ~seq (list ~seq))]
+     ~@body))
+
+
+(defn most-urgent-process
+  []
+  (loop [[proc1 max val1 :as acc] [*default-proc* -1 true]
+         p @*procs*]
+    (if (empty? p)
+      [proc1 val1]
+      (let [current-p (first p)
+            pri (:pri current-p)
+            w (:wait current-p)
+            v (or (not w) (when (fn? w) (w)))]
+
+        ;; (println "v:" (list pri max (> pri max) w v val1))
+        ;; (println "v:" (list  pri (> pri max) v))
+
+        (recur
+          (if (and pri (> pri max) v)
+            [current-p pri v]
+            acc)
+          (rest p))))))
+
+
+(comment
+
+  foo.core> (def ^:dynamic *procs*
+             (atom
+              (list {:pri 1, :state +, :wait nil}
+                    {:pri 5, :state -, :wait true}
+                    {:pri 3, :state /, :wait #(str 10)}
+                    {:pri 4, :state str, :wait nil})))
+ #'foo.core/*procs*
+
+ foo.core> (most-urgent-process)
+
+;; v: (1 -1 true nil true)
+;; v: (5 1 true true nil)
+;; v: (3 1 true #function[foo.core/fn--11576] 10)
+;; v: (4 3 true nil true)
+;;  [{:pri 4, :state #function[clojure.core/*], :wait nil} true]
+
+ )
+
+
+(defn pick-process
+  []
+  (multiple-value-bind_ver3
+    (p v)
+    (most-urgent-process)
+
+    ;; (println "p:" p v)
+
+    (reset! *proc* p)
+    (swap! *procs* #(remove #{p} %))
+    ((:state p) v)))
+
+
+(defn arbitrator
+  [test cont]
+  (do
+    (swap! *proc* assoc :wait test)
+    (swap! *proc* assoc :state cont)
+
+    ;; (println "cnt procs [before]:" (count @*procs*))
+    (swap! *procs* conj @*proc*)
+    ;; (println "cnt procs [after]:" (count @*procs*))
+
+    (pick-process)))
+
+
+(defmacro wait
+  [param test & body]
+  `(arbitrator
+     ;; test -> :wait
+     (fn [] ~test)
+     ;; cont -> :state
+     (fn [~param] (do ~@body))))
+
+
+(defmacro yield
+  [& body]
+  `(arbitrator
+     ;; test
+     nil
+     ;; cont
+     (fn [x#] (do ~@body))))
+
+
+(defn setpri
+  [n]
+  (swap! *proc* assoc :pri n))
+
+
+(defn halt
+  ([]
+   (halt nil))
+  ([val]
+   (throw (ex-info (str *halt*) {:val val}))
+   ;; (throw (Exception. (str *halt*)))
+   ))
+
+
+(defn kill
+  ([]
+   (kill nil))
+  ([obj]
+   (if obj
+     (swap! *procs* #(remove #{obj} %))
+     (pick-process))))
+
+
+(comment
+
+  foo.core> (def ^:dynamic *procs*
+              (atom
+               (list {:pri 1, :state +, :wait nil}
+                     {:pri 5, :state -, :wait true}
+                     {:pri 3, :state /, :wait #(str 10)}
+                     {:pri 4, :state str, :wait nil})))
+  #'foo.core/*procs*
+
+  ;; foo.core> (count @*procs*)
+  ;; 4
+
+  foo.core> (kill {:pri 5, :state -, :wait true})
+  ;; ({:pri 1, :state #function[clojure.core/+], :wait nil}
+  ;;  {:pri 3,
+  ;;   :state #function[clojure.core//],
+  ;;   :wait #function[foo.core/fn--11928]}
+  ;;  {:pri 4, :state #function[clojure.core/str], :wait nil})
+
+  foo.core> (count @*procs*)
+  ;; 3
+
+  foo.core> (kill)
+  ;; "true"
+
+  foo.core> (count @*procs*)
+  ;; 2
+
+  foo.core> @*procs*
+  ;; ({:pri 1, :state #function[clojure.core/+], :wait nil}
+  ;;  {:pri 3,
+  ;;   :state #function[clojure.core//],
+  ;;   :wait #function[foo.core/fn--11928]})
+
+  )
+
+
+(defn foo
+  [x]
+  (do
+    (println "Foo was called with" x)
+    (inc x)))
+
+
+(comment
+
+  foo.core> (fork (foo 2) 25)
+  Foo was called with 2
+  3
+
+  (program two-foos (a b)
+    (fork (foo a) 1)
+    (fork (foo b) 2))
+
+  )
+
+
+;; chap21.2 (P287)
+
+
+(def ^:dynamic *open-doors* (atom nil))
+
+
+(defn pedestrian
+  []
+  (wait d (first @*open-doors*)
+        (println "Entering:" d)
+        ;; (flush)
+        ))
+
+
+(program ped ()
+         (fork (pedestrian) 1))
+
+
+(program ped2 ()
+         (fork (pedestrian) 2))
