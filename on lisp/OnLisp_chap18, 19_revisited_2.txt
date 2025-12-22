@@ -1,0 +1,820 @@
+;; =============
+;; 概要：18 章再訪　その２
+;;     高速オペレータ（）
+;; =============
+
+(defn cons? [x]
+  (and coll?(seqable? x) (seq x)))
+
+
+(defn cl-atom? [x]
+  (not (cons? x)))
+
+(defn varsym?
+  [x]
+  (and (symbol? x)
+       (= \?
+          (first (str x)))))
+
+(defn vars-in
+  ([expr]
+   (vars-in expr cl-atom?))
+  ([expr test-fnc]
+   (if (test-fnc expr)
+     (when (varsym? expr)
+        #{expr})
+     (clojure.set/union
+       (vars-in (first expr) test-fnc)
+       (vars-in (next expr) test-fnc)))))
+
+(defn simple?
+  [x]
+  (or (cl-atom? x)
+      (= (first x) 'quote)))
+
+;;================
+
+
+(defn vars-in_original
+  ([expr] (vars-in_original expr #(not (and (seqable? %) (seq %)))))
+  ([expr test?]
+    (if (test? expr)
+      (if (varsym? expr)
+        #{(str expr)}
+        (if (number? expr)
+
+          ;; 抽出条件に数字が来た場合、そのままシンボルになれないので、
+          ;; ガードに、頭に "num_" を付加している。
+          #{(str "num_" expr)}
+
+          (when expr #{(str expr)})))
+
+      (clojure.set/union
+        (vars-in_original (first expr) test?)
+        (vars-in_original (next expr) test?)))))
+
+
+(defn vars-in2
+  ([expr] (vars-in2 expr #(not (and (seqable? %) (seq %)))))
+  ([expr test?]
+   (if (test? expr)
+     (if (varsym? expr)
+       (list (str expr))
+       (when expr (list (str expr))))
+     (seq
+       ;; 重複を除去
+       (set
+         (concat
+           (vars-in2 (first expr) test?)
+           (vars-in2 (next expr) test?)))))))
+
+(defn vars-in
+  ([expr]
+   (vars-in expr cl-atom?))
+  ([expr test-fnc]
+   (if (test-fnc expr)
+     (when (varsym? expr)
+        #{expr})
+     (clojure.set/union
+       (vars-in (first expr) test-fnc)
+       (vars-in (next expr) test-fnc)))))
+
+;; =============
+
+(defmacro with-gensyms
+  [syms & body]
+  `(let [~@(mapcat (fn [s] `(~s (gensym))) syms)]
+     ~@body))
+
+;; =============
+
+;; 入れ子にも対応しているので、「destruct」にたいして「2」としている
+
+(defn destruc2
+  [arg_pat arg_seq fnc n is-nested]
+  (when (seq arg_pat)
+    (let [more (cond (= (first arg_pat) '&) (first (rest arg_pat))
+                     ;; last item of nested seq
+                     (and is-nested (empty? (rest arg_pat))) (first arg_pat)
+                     (fnc arg_pat) arg_pat
+                     :else nil)
+          ;; gensym したシンボル（var）にはクォートを掛けたくない
+          target (if (symbol? arg_seq) arg_seq `'~arg_seq)
+          ]
+
+      ;;(println "target:" target arg_seq)
+
+      (if more
+        ;; 入れ子対応 ============================
+        (if (symbol? more)
+          `((~more ~(if (= (first arg_pat) '&)
+                     `(drop ~n ~target)
+                     `(nth ~target ~n))))
+          (let [var (gensym)]
+
+            (cons
+              `(~var (nth ~target ~n))
+              ;;`(~var ~(nth target n))
+
+              (destruc2 more var fnc 0 true))))
+        ;; ======================================
+
+        (let [rec (destruc2 (rest arg_pat) arg_seq fnc (inc n) is-nested)
+              p (first arg_pat)]
+          (if (fnc p)
+            (cons
+              `(~p (nth ~target ~n))
+              rec)
+            (let [var (gensym)]
+              (concat
+                (cons
+                  `(~var
+                     ;; コンパイルを通すためのもの
+                     (nth ~target ~n)
+                     ;; 動作させるためのもの（dbind2 でビルドエラーになる）
+                     ;; ~(nth (first (rest target)) n)
+                ) rec)
+
+                ;; nested seq
+                (destruc2 p var fnc 0 true)))))))))
+
+
+
+(defn destruc
+  [arg_pat arg_seq fnc n is-nested]
+  (when (seq arg_pat)
+    (let [more (cond (= (first arg_pat) '&) (first (rest arg_pat))
+                     ;; last item of nested seq
+                     (and is-nested (empty? (rest arg_pat))) (first arg_pat)
+                     (fnc arg_pat) arg_pat
+                     :else nil)
+          ;; gensym したシンボル（var）にはクォートを掛けたくない
+          target (if (symbol? arg_seq) arg_seq `'~arg_seq)]
+      (if more
+        `((~more (drop ~n ~target)))
+        (let [rec (destruc (rest arg_pat) arg_seq fnc (inc n) is-nested)
+              p (first arg_pat)]
+          (if (fnc p)
+            (cons `(~p (nth ~target ~n)) rec)
+            (let [var (gensym)]
+              (concat
+                (cons `(~var (nth ~target ~n)) rec)
+                ;; nested seq
+                (destruc p var fnc 0 true)))))))))
+
+
+
+(defn call_destruc
+  [arg_pat arg_seq & [fnc n]]
+  (let [fnc (or fnc #(not (and (seqable? %) (seq %))))
+        n (or n 0)]
+;;    (println "fnc:" fnc)
+;;    (println "n:" n)
+;;    (destruc arg_pat arg_seq fnc n false)
+    (destruc2 arg_pat arg_seq fnc n false)
+))
+
+
+(comment
+
+  foo.core> (call_destruc '(a b c) '(1 (x y z) 2 3))
+  ((a
+    (if
+     (clojure.core/> (clojure.core/count '(1 (x y z) 2 3)) 0)
+     (clojure.core/nth '(1 (x y z) 2 3) 0)))
+   (b
+    (if
+     (clojure.core/> (clojure.core/count '(1 (x y z) 2 3)) 1)
+     (clojure.core/nth '(1 (x y z) 2 3) 1)))
+   (c
+    (if
+     (clojure.core/> (clojure.core/count '(1 (x y z) 2 3)) 2)
+     (clojure.core/nth '(1 (x y z) 2 3) 2))))
+
+)
+
+;; =============
+
+(defn dbind-ex
+  [binds body]
+  (if (empty? binds)
+    `(do ~@body)
+    `(let [~@(mapcat
+               #(if (list? (first %)) (first %) %)
+               binds)]
+       ~(dbind-ex
+          (mapcat
+            #(when (list? (first %)) (rest %))
+            binds)
+          body))))
+
+
+;; arg_seq にはクォートが不要
+
+(defmacro dbind2
+  [arg_pat arg_seq & body]
+  (dbind-ex (call_destruc arg_pat arg_seq) body))
+
+;; arg_seq にはクォートがついてくる前提
+
+(defmacro dbind3
+  [arg_pat arg_seq & body]
+  (let [gseq (gensym)]
+    `(let [~gseq ~arg_seq]
+      ~(dbind-ex (call_destruc arg_pat gseq) body))))
+
+
+;; =============
+
+(defn varsym?_
+  [x]
+  (and (symbol? x)
+       (= \?
+          (first (name x)))))
+
+(defn varsym?
+  [x]
+  (and (symbol? x)
+       (= \?
+          (first (str x)))))
+
+(comment
+
+  foo.core> (map varsym? '((1) '(2 3) ?x 'y))
+  (false false true false)
+
+)
+
+;; =============
+;; main
+;; =============
+
+(defn cons? [x]
+  (and (seqable? x) (seq x)))
+
+
+(defn cl-atom? [x]
+  (not (cons? x)))
+
+
+(defn simple?_
+  [x]
+  (or (cl-atom? x)
+      (= (first x) 'quote)))
+
+(defn simple?
+  [x]
+  (or (cl-atom? x)
+      (= (first x) 'quote)
+
+      ;; 文字列を許容するようにした
+      (string? x)))
+
+(comment
+
+  foo.core> (map simple? '((1) '(2 3) ?x 'y))
+  (false true true true)
+
+)
+
+
+(defn gensym?
+  [s]
+  (and (symbol? s)
+       ;; 文字列操作をする前のガード
+       (>= (count (name s)) 3)
+       (= "G__" (subs (name s) 0 3))))
+
+(comment
+
+   (let [a (gensym)] a)
+   => G__10675
+
+   (gensym? (let [a (gensym)] a))
+   => true
+
+   (gensym? (let [a (gensym)]
+              (let [a 1] a)))
+   => false
+
+)
+
+(defn length-test
+  [pat coll]
+  (let [cnt-coll (count coll)
+        fin (first (first (rest (last coll))))]
+
+;;    (println "fin1:" (first (rest (last coll))))
+;;    (println "fin2:" pat cnt-coll)
+;;    (println "fin3:" coll)
+
+    (if (or (coll? fin)
+            (= (str fin) "clojure.core/nth"))
+
+      ;; うまく動作しなかったので、オペレータを変更した（'=' -> "<="）
+      ;; `(= (count ~pat) ~cnt-coll)
+      `(<= (count ~pat) ~cnt-coll)
+
+      ;; nth 意外の場合（drop など）
+      ;; うまく動作しなかったので、オペレータを変更した（'>' -> ">="）
+      ;; `(> (count ~pat) ~(- cnt-coll 2))
+
+      `(>= (count ~pat) ~(- cnt-coll 2)))))
+
+
+(defn length-test
+  [pat coll]
+  (let [cnt-coll (count coll)
+        fin (first (first (rest (last coll))))]
+
+;;    (println "fin1:" (first (rest (last coll))))
+;;    (println "fin2:" pat cnt-coll)
+;;    (println "fin3:" coll)
+
+    (if ;;(or (coll? fin)
+        ;;    (= (str fin) "clojure.core/nth"))
+            (= (str fin) "clojure.core/drop")
+      ;; nth 意外の場合（drop など）
+      `(>= (count ~pat) ~(- cnt-coll 2))
+      true ;;`(= (count ~pat) ~cnt-coll)
+      )))
+
+
+;; 入れ子にも対応しているので、「match1」にたいして「2」としている
+
+(defn match2
+  [refs then else]
+  (dbind2
+    ;; pat
+    ([pat expr] & coll)
+    ;; seq
+    refs
+    ;; body
+    (cond
+      ;; ===============================
+      (gensym? pat)
+      (do
+;;        (println "-- gensym --")
+
+;;        (println "gensym pat:" pat)
+;;        (println "expr:" expr)
+;;        (println "coll:" coll)
+;;        (println "then:" then)
+;;        (println "else:" else)
+;;        (println "ref:" ref)
+
+;;        (println "if:" (length-test pat coll))
+
+        ;; 「if-match-quick」で gensym されたシンボルに、ここで実値を束縛する
+        `(let [~pat '~expr]
+           (if (and
+                 ;; seq? で判定するとベクタ、セット、ハッシュマップを弾いてしまう
+                 (coll? ~pat)
+                 ;; 「length-test」の挙動が不明確なため、不使用
+                 ;; ~(length-test pat coll)
+                 true
+                 )
+             ~then
+             ~else)))
+
+      ;; ===============================
+      (= pat '_)
+      (do
+;;        (println "-- _ --")
+
+        then)
+
+      ;; ===============================
+      (varsym? pat)
+      (do
+;;        (println "-- ? --")
+
+        `(let [ge# ~expr]
+
+;;          (println "? expr:" ~expr ~pat (gensym? ~pat) (= ~pat ge#))
+;;          (println "pat:" ~pat)
+
+          (if (or (gensym? ~pat) (= ~pat ge#))
+            (let [~pat ge#] ~then)
+            ~else)))
+
+      ;; ===============================
+      :else
+      (do
+;;        (println "-- else --")
+
+        `(if (= ~expr
+             ;; ※シンボルの場合にはクォートを付けたくない
+             (if (symbol? '~pat) ~pat '~pat))
+          ~then
+
+          (if (= ~expr
+                 (if (aaa? '~pat) ~pat '~pat))
+            ~then
+            ~else)))
+
+      ;; ===============================
+)))
+
+
+(defn gen-match
+  [refs then else step]
+  (do
+    ;;(println step ":" refs)
+
+    (if (empty? refs)
+      then
+      (let [then_next (gen-match (rest refs) then else
+                      ;; 処理ステップ
+                      "b")
+            pat (first (first refs))]
+
+        (if (simple? pat)
+          (do
+            ;; 処理ステップ
+            ;;(println "d" ":" refs)
+            (match2 refs then_next else))
+
+          (gen-match (first refs) then_next else
+                     ;; 処理ステップ
+                     "c"))))))
+
+(defmacro pat-match
+  [pat s then else]
+  (if (symbol? pat)
+    ;; symbol
+    (match2 `((~pat ~s)) then else)
+
+    ;; seq
+    (with-gensyms (gseq gelse)
+      `(letfn [(~gelse [] ~else)]
+         ~(gen-match
+           (cons
+             (list
+               gseq
+               ;; 文字列を考慮して
+               (seq s))
+
+             ;; [251202: gima]
+             ;; (call_destruc pat gseq simple?)
+             (call_destruc pat s simple?))
+
+           then
+           `(~gelse)
+           ;; 処理ステップ
+           "a")))))
+
+(defmacro if-match-quick
+  ([pat seq then]
+   (list 'if-match-quick pat seq then nil))
+  ([pat seq then else]
+   `(let [~@(mapcat
+              (fn [v] `(~(symbol v) (gensym)))
+              ;; pat の要素で gensym している。元の仕様と異なっているが？
+              ;; (vars-in_original then simple?)
+              (vars-in pat simple?))]
+      (pat-match ~pat ~seq ~then ~else)
+)))
+
+(defn aaa?
+  [x]
+  (or (not (and (seqable? x) (seq x)))
+      (= (first x) 'quote)))
+
+
+(defn destruc2
+  [arg_pat arg_seq fnc n is-nested]
+  (when (seq arg_pat)
+    (let [more (cond (= (first arg_pat) '&) (first (rest arg_pat))
+                     ;; last item of nested seq
+                     (and is-nested (empty? (rest arg_pat))) (first arg_pat)
+                     (fnc arg_pat) arg_pat
+                     :else nil)
+          ;; gensym したシンボル（var）にはクォートを掛けたくない
+          target (if (symbol? arg_seq) arg_seq `'~arg_seq)
+          ;;target (if (aaa? arg_seq) arg_seq `'~arg_seq)
+
+          ]
+
+      ;;(println "target:" target arg_seq)
+
+      (if more
+        ;; 入れ子対応 ============================
+        (if (symbol? more)
+          `((~more ~(if (= (first arg_pat) '&)
+                     `(drop ~n ~target)
+                     `(nth ~target ~n))))
+          (let [var (gensym)]
+
+            (cons
+              `(~var (nth ~target ~n))
+              ;;`(~var ~(nth target n))
+              (destruc2 more var fnc 0 true))))
+        ;; ======================================
+
+        (let [rec (destruc2 (rest arg_pat) arg_seq fnc (inc n) is-nested)
+              p (first arg_pat)]
+          (if (fnc p)
+            (cons
+;;              `(~p (nth ~target ~n))
+              `(~p (nth ~target ~n))
+              rec)
+            (let [var (gensym)
+                  ;;a (list 'nth (first (rest target)) n)
+                  ]
+
+              ;;(println "a:" a)
+
+              (concat
+                (cons
+                  `(~var
+                     ;; コンパイルを通すためのもの
+                     ;; (nth ~target ~n)
+                     ;; 動作させるためのもの（dbind2 でビルドエラーになる）
+                     ~(nth (first (rest target)) n)
+                ) rec)
+
+                ;; nested seq
+                (destruc2 p var fnc 0 true)))))))))
+
+(comment
+
+  foo.core> (if-match-quick (?x) (1) ?x "if-match-quick")
+  1
+
+  foo.core> (if-match-quick (?x ?y ?z) (hi ho) [?x ?y ?z] "if-match-quick")
+  [hi ho nil]
+
+  foo.core> (let [n 3]
+    (if-match-quick (?x ?y) (1 2) (list ?x ?y n) "if-match-quick"))
+  (1 2 3)
+
+  foo.core> (let [n 3 m "m"]
+    (if-match-quick (?x n 'n m '(a b)) (1 3 'n "m" '(a b)) (list ?x n m) "if-match-quick"))
+  (1 3 "m")
+
+)
+
+
+
+(comment
+
+
+(defn abab3
+  []
+  (let [n 3
+        m "m"]
+    (if-match-quick
+      (?x n 'n m '(a b))
+      (1 3 'n "m" '(a b))
+      (list ?x n m)
+      "abab3")))
+
+(defn gen-let-part
+  [pat body]
+    `(let [~@(mapcat
+               (fn [v] `(~(symbol v) (gensym)))
+               (vars-in pat simple?))]
+       ~body))
+
+
+(defn gen-let-part
+  [pat body]
+    (list
+      'let
+      (vec
+        (mapcat
+          (fn [v] `(~(symbol v) (gensym)))
+          (vars-in pat simple?)))
+       body))
+
+
+(defn abab4
+  [pat body]
+  (gen-let-part pat body))
+
+)
+
+;; =============
+;; 概要：19 章　クエリコンパイラ
+;; =============
+
+(defn make-db
+  []
+  {})
+
+
+(def ^:dynamic *default-db* (atom (make-db)))
+
+
+(defn clear-db
+  ([]
+   (clear-db *default-db*))
+  ([db]
+   (reset! db {})))
+
+
+(defn db-query
+  ([key]
+   (db-query key *default-db*))
+  ([key db]
+   {:val (@db key) :found (coll? (@db key))}))
+
+
+(defn db-push
+  ([key val]
+   (db-push key val *default-db*))
+  ([key val db]
+   ;; (swap! db update key conj val)
+   (swap! db assoc key (conj ((db-query key) :val) val))))
+
+
+(defmacro fact
+  [pred & args]
+  `(do (db-push '~pred '~args)
+       '~args))
+
+
+;; (clear-db)
+;; => {}
+
+;; (fact painter reynolds joshua english)
+;; => (reynolds joshua english)
+
+;; (db-query 'painter)
+;; => {:val ((reynolds joshua english)), :found? true}
+
+;; (fact painter canale antonio venetian)
+;; => (canale antonio venetian)
+
+;; (db-query 'painter)
+;; => {:val ((canale antonio venetian) (reynolds joshua english)), :found true}
+
+;; ((db-query 'painter) :val)
+;; => ((canale antonio venetian) (reynolds joshua english))
+
+;; (db-query 'lisper)
+;; => {:val nil, :found false}
+
+(defn gen-facts
+  []
+  ;; init
+  (clear-db)
+
+  ;; painter
+  (fact painter canale antonio venetian)
+  (fact painter hogarth william english)
+  (fact painter reynolds joshua english)
+
+  ;; dates
+  (fact dates hogarth 1697 1772)
+  (fact dates canale 1697 1768)
+  (fact dates reynolds 1723 1792))
+
+
+(gen-facts)
+
+;; ===================
+
+(declare compile-query)
+
+
+(defn compile-or
+  [clauses body]
+  (when (seq clauses)
+    `(do
+       ~@(map
+           #(compile-query % body)
+           clauses))))
+
+
+(defn compile-and
+  [clauses body]
+  (if-not (seq clauses)
+    body
+    (compile-query
+      (first clauses)
+      (compile-and (rest clauses) body))))
+
+
+(defn compile-not
+  [q body]
+  `(list
+     ~(compile-query (first q) (rest q) nil body)))
+
+
+(defn compile-simple_
+  ([opr other body] (compile-simple_ opr other body nil))
+  ([opr other body else]
+   (do
+     ;;(println "((db-query opr) :val): " ((db-query opr) :val))
+
+   (concat
+     ;; ガード
+     '(list)
+     ;; 結果を返したいので、doseq ではなく for を使っている
+     (for [fact# ((db-query opr) :val)]
+       ;; other に抽出条件を保持する
+       `(pat-match ~other ~fact# ~body ~else)
+       )))))
+
+
+(defn compile-simple_
+  ([opr other body] (compile-simple_ opr other body nil))
+  ([opr other body else]
+   (do
+     ;;(println "((db-query opr) :val): " ((db-query opr) :val))
+
+   (concat
+     ;; ガード
+     '(list)
+     ;; 結果を返したいので、doseq ではなく for を使っている
+     (for [fact# ((db-query opr) :val)
+           ;; :let [result `(pat-match ~other ~fact# ~body ~else)]
+           ]
+       ;; other に抽出条件を保持する
+       `(pat-match ~other ~fact# ~body ~else)
+       ;; result
+       )))))
+
+
+(defn compile-simple
+  ([opr other body] (compile-simple opr other body nil))
+  ([opr other body else]
+   (let [fact (gensym)]
+     ;;(println "((db-query opr) :val): ")
+
+     `(doseq [~fact ((db-query '~opr) :val)
+              ;;:let [~'result (pat-match ~other '~fact '~body "else")]
+              :let [~'result '~(pat-match other fact body "else")]
+              ]
+
+              (println ~'result)
+       ;; (pat-match ~other ~fact ~body ~else)
+       ;; (println (list 'pat-match ~other '~fact '~body ~else '~((db-query opr) :val)))
+       ;; (pat-match ~other '~fact '~body ~else)
+       ))))
+
+
+(defn compile-query
+  ([[opr & other] body] (compile-query opr other body nil))
+  ([opr other body else]
+    (case opr
+      and  (compile-and other body)
+      not (compile-not (first other) body)
+      clj `(if ~(first other) ~body)
+      or   (compile-or other body)
+      (compile-simple_ opr other body else)
+)))
+
+
+(defmacro with-answer-compile
+  [query & body]
+  ;; 文字列 -> シンボル
+  ;;  (let [q (map symbol (vars-in query))]
+  (let [q (map symbol (vars-in query simple?))]
+    ;; seq
+    `(with-gensyms
+       (~@q)
+       ;; ~(compile-query (generalize query) `(do ~@body))
+       ;; (list 'compile-query '~(generalize query) `(do ~~@body))
+
+       ~(compile-query query `(do ~@body))
+       )))
+
+
+;;============
+
+
+(comment
+
+foo.core> (with-answer-compile (painter 'hogarth ?x ?y) (list ?x ?y))
+
+
+foo.core> (call_destruc '(?x n 'n m (?y & ?z)) '(1 3 'n "m" '(a b c)) simple?)
+((?x (clojure.core/nth '(1 3 'n "m" '(a b c)) 0))
+ (n (clojure.core/nth '(1 3 'n "m" '(a b c)) 1))
+ ('n (clojure.core/nth '(1 3 'n "m" '(a b c)) 2))
+ (m (clojure.core/nth '(1 3 'n "m" '(a b c)) 3))
+ (G__11046 '(a b c))
+ (?y (clojure.core/nth G__11046 0))
+ (?z (clojure.core/drop 1 G__11046)))
+
+
+foo.core> (map #(if (gensym? (first %)) (count (first (rest %))) 0) lst)
+(0 0 0 0 2 0 0)
+foo.core> (count (remove zero? (map #(if (gensym? (first %)) (count (first (rest %))) 0) lst)))
+1
+
+(defn length-test
+  [pat coll]
+  (let [cnt-coll (count coll)
+        fin (first (first (rest (last coll))))]
+    (if (or (coll? fin)
+            (= (str fin) "clojure.core/nth"))
+      `(= (count ~pat) ~cnt-coll)
+      ;; nth 意外の場合（drop など）
+      `(>= (count ~pat) ~(- cnt-coll 2))
+      )))
+
+)

@@ -1,0 +1,56 @@
+(defn make-db
+  []
+  {})
+
+
+(def ^:dynamic *default-db* (atom (make-db)))
+
+
+(defn clear-db
+  ([]
+   (clear-db *default-db*))
+  ([db]
+   (reset! db {})))
+
+
+(defn db-query
+  ([key]
+   (db-query key *default-db*))
+  ([key db]
+   {:val (@db key) :found (coll? (@db key))}))
+
+
+(defn db-push
+  ([key val]
+   (db-push key val *default-db*))
+  ([key val db]
+   ;; (swap! db update key conj val)
+   (swap! db assoc key (conj ((db-query key) :val) val))))
+
+
+(defmacro fact
+  [pred & args]
+  `(do (db-push '~pred '~args)
+       '~args))
+
+
+;; (clear-db)
+;; => {}
+
+;; (fact painter reynolds joshua english)
+;; => (reynolds joshua english)
+
+;; (db-query 'painter)
+;; => {:val ((reynolds joshua english)), :found? true}
+
+;; (fact painter canale antonio venetian)
+;; => (canale antonio venetian)
+
+;; (db-query 'painter)
+;; => {:val ((canale antonio venetian) (reynolds joshua english)), :found true}
+
+;; ((db-query 'painter) :val)
+;; => ((canale antonio venetian) (reynolds joshua english))
+
+;; (db-query 'lisper)
+;; => {:val nil, :found false}

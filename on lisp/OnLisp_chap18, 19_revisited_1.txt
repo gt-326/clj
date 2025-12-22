@@ -1,0 +1,547 @@
+;; =============
+;; 概要：18 章再訪　その１
+;;     遅いオペレータ（教科書どおりに、Hashmap 用のキーワードを「?」付きのシンボルに戻す）
+;; =============
+
+(defmacro multiple-value-bind_ver3
+  [binds seq & body]
+  `(let [;; gensym 部分
+         ~@(mapcat #(list (symbol %) '(gensym)) binds)
+         ;; bind 部分
+         [~@(map #(symbol %) binds)]
+         (if ~(sequential? seq) ~seq (list ~seq))]
+     ~@body))
+
+;; =============
+
+(defmacro aif
+  [test-form then-form & else-form]
+  `(let [~'it ~test-form]
+    (if ~'it
+      ~then-form
+      (do ~@else-form))))
+
+(defmacro aif2
+  [test & then-else]
+  (let [[then else] then-else]
+    `(multiple-value-bind_ver3
+      (~'it ~'win)
+      ~test
+      (if (or ~'it ~'win) ~then ~else))))
+
+;; =============
+
+(defmacro acond4
+  [variables & clauses]
+  (when (seq clauses)
+    (let [[cl1 cl2] (take 2 clauses)]
+      (if (seq variables)
+        `(multiple-value-bind_ver3
+           ~variables
+           ~cl1
+           (if (or ~@variables)
+             (let [~'it ~(first variables)] ~cl2)
+             (acond4 ~variables ~@(drop 2 clauses))))
+
+        `(if ~cl1
+           (let [~'it ~cl1] ~cl2)
+           (acond4 ~variables ~@(drop 2 clauses)))))))
+
+;; =============
+
+(defn varsym?
+  [x]
+  (and (symbol? x)
+       (= \?
+          (first (name x)))))
+
+
+;; =============
+;; main
+;; =============
+
+(defn my-binding_original
+  [x binds]
+  (letfn [(rec-bind
+          [x binds]
+          (aif
+            (get binds x)
+            ;; it を先に持ってこないと具合が悪いみたい
+            (or it
+                (rec-bind (rest it) binds))))]
+    ;; [251126:gima]
+    ;;(rec-bind (keyword x) binds)
+    (rec-bind x binds)))
+
+
+(defn match_original
+  ([x y] (match_original x y {}))
+  ([x y binds]
+
+     ;; よくよく見てみると、「acond」でこと足りるはずなんだけど、
+     ;; なんでだか本のコードは「acond2」を使っている。
+    (acond4
+      ;; [args: variables]
+      nil
+
+      ;; [args: clauses]
+      (or (= x y) (= x '_) (= y '_)) binds
+
+      ;; [251126:gima]
+      ;; (my-binding x binds) (match_original it y binds)
+      ;; (my-binding y binds) (match_original x it binds)
+      (my-binding_original x binds) (match_original it y binds)
+      (my-binding_original y binds) (match_original x it binds)
+
+      (varsym? x)
+        ;; [251126:gima]
+        ;; キーワードではなく、シンボルをキーにした
+        ;; (assoc binds (keyword (apply str (name x)))
+        (assoc binds (symbol (apply str (name x)))
+          (if (varsym? y)
+            (symbol (apply str (name y)))
+            y))
+      (varsym? y)
+        ;; [251126:gima]
+        ;; キーワードではなく、シンボルをキーにした
+        ;; (assoc binds (keyword (apply str (name y)))
+        (assoc binds (symbol (apply str (name y)))
+          (if (varsym? x)
+            (symbol (apply str (name x)))
+            x))
+
+      (and (seqable? x)
+           (seqable? y)
+           (match_original (first x) (first y) binds))
+        (match_original (next x) (next y) it)
+
+      :else nil)))
+
+(comment
+
+   foo.core> (match_original '(p a b c a) '(p ?x ?y c ?x))
+   {?x a, ?y b}
+
+   foo.core> (match_original '(p ?x b ?y a) '(p ?y b c a))
+   {?x ?y, ?y c}
+
+   foo.core> (match_original '(p ?x) '(p ?x))
+   {}
+
+   foo.core> (match_original '(a b c) '(a a a))
+   nil
+
+   foo.core> (match_original '(a ?x b) '(_ 10 _))
+   {?x 10}
+
+   foo.core> (def binds {:a "1" :b "3"})
+   #'foo.core/binds
+
+   foo.core> (match_original 'a '?c binds)
+   {:a "1", :b "3", ?c "1"}
+
+   foo.core> (match_original '(?x ?y) '(hi ho))
+   {?x hi, ?y ho}
+
+)
+
+(comment
+
+(defn vars-in_original_
+  ([expr] (vars-in_original_ expr #(not (and (seqable? %) (seq %)))))
+  ([expr atom?]
+    (if (atom? expr)
+      (if (varsym? expr)
+        #{(apply str (name expr))}
+        (when expr #{(name expr)}))
+
+      (clojure.set/union
+        (vars-in_original_ (first expr) atom?)
+        (vars-in_original_ (next expr) atom?)))))
+
+
+;;  foo.core> (vars-in_original_ '(dates ?x 1697 ?w))
+;;  Execution error (ClassCastException) at foo.core/vars-in-original- (REPL:1255).
+;;  class java.lang.Long cannot be cast to class clojure.lang.Named (java.lang.Long is in module java.base of loader 'bootstrap'; clojure.lang.Named is in unnamed module of  loader 'app')
+
+)
+
+(defn vars-in_original
+  ([expr] (vars-in_original expr #(not (and (seqable? %) (seq %)))))
+  ([expr atom?]
+    (if (atom? expr)
+      (if (varsym? expr)
+        #{(str expr)}
+        (if (number? expr)
+
+          ;; [251126: gima]
+          ;; 抽出条件に数字が来た場合、そのままシンボルになれないので、
+          ;; ガードに、頭に "num_" を付加している。
+          #{(str "num_" expr)}
+
+          (when expr #{(str expr)})))
+
+      (clojure.set/union
+        (vars-in_original (first expr) atom?)
+        (vars-in_original (next expr) atom?)))))
+
+(comment
+
+   foo.core> (vars-in_original '(dates ?x 1697 ?w))
+   #{"?x" "num_1697" "?w" "dates"}
+
+)
+
+
+(defmacro if-match_original_
+  [pat seq then & else]
+  (let [t (if (list? then) `(list ~@then) then)]
+    `(aif2
+      ;; 明示的に list でくるむ必要がある
+      (list (match_original '~pat '~seq))
+      (let [~@(mapcat
+                (fn [v]
+                  ;; [251126:gima]
+                  ;; キーワードではなく、シンボルをキーにした
+                  ;; `(~(symbol v) (my-binding ~(keyword v) ~'it)))
+                  `(~(symbol v) (my-binding_original '~(symbol v) ~'it)))
+                (vars-in_original then))]
+        ~t)
+        (do ~@else))))
+
+(defmacro if-match_original
+  [pat seq then & else]
+  (let [t (if (list? then) `(list ~@then) then)]
+    `(aif2
+      ;; 明示的に list でくるむ必要がある
+      (list (match_original '~pat '~seq))
+      (let [~@(mapcat
+                (fn [v]
+                  ;; [251126:gima]
+                  ;; キーワードではなく、シンボルをキーにした
+                  ;; `(~(symbol v) (my-binding ~(keyword v) ~'it)))
+                  `(~(symbol v) (my-binding_original '~(symbol v) ~'it)))
+                (vars-in then simple?))]
+        ~t)
+        (do ~@else))))
+
+(comment
+
+   foo.core> (if-match_original (?x ?y) (hi ho) ?x)
+   hi
+
+   foo.core> (if-match_original (?x ?y) (hi ho) [?x ?y])
+   [hi ho]
+
+   foo.core> (if-match_original (?x ?y) (hi ho) (?x ?y ?z))
+   (hi ho nil)
+
+)
+
+(defn gen-then_
+  [then]
+  (let [t (if (list? then) (cons 'list then) then)]
+    `(let [~@(mapcat
+               ;; [251126:gima]
+               ;; キーワードではなく、シンボルをキーにした
+               ;;(fn [v] `(~(symbol v) (~(keyword v) ~'it)))
+               (fn [v] `(~(symbol v) (~'it '~(symbol v))))
+               (vars-in_original then))]
+      ~t)))
+
+(defn gen-then-part
+  [then]
+  (let [t (if (list? then) (cons 'list then) then)]
+    `(let [~@(mapcat
+               ;; [251126:gima]
+               ;; キーワードではなく、シンボルをキーにした
+               ;;(fn [v] `(~(symbol v) (~(keyword v) ~'it)))
+               (fn [v] `(~(symbol v) (~'it '~(symbol v))))
+               (vars-in then))]
+      ~t)))
+
+
+(defmacro if-match_original2
+  [test then & else]
+  (list
+    'aif2
+    `(list ~test)
+    (gen-then-part then)
+    (cons 'do else)))
+
+
+(defn abab
+  [s]
+  ;; [ run time ] zone
+  (let [test (match_original '(?x ?y) s)]
+    ;; [ read / compile time ] zone
+    (if-match_original2 test [?x ?y ?z])))
+
+
+(defn abab2
+  [p s]
+  ;; [ run time ] zone
+  (let [test (match_original p s)]
+
+    ;; [ read / compile time ] zone
+    (if-match_original2 test [?x ?y ?z])))
+
+
+
+(comment
+
+   foo.core>  (if-match_original2 (match_original '(?x ?y) '(hi ho)) [?x ?y ?z] "abab")
+   [hi ho nil]
+
+   foo.core> (abab '(hi ho))
+   [hi ho nil]
+
+)
+
+
+;; =============
+;; 概要：19 章　クエリインタプリタ
+;; =============
+
+
+(defn make-db
+  []
+  {})
+
+
+(def ^:dynamic *default-db* (atom (make-db)))
+
+
+(defn clear-db
+  ([]
+   (clear-db *default-db*))
+  ([db]
+   (reset! db {})))
+
+
+(defn db-query
+  ([key]
+   (db-query key *default-db*))
+  ([key db]
+   {:val (@db key) :found (coll? (@db key))}))
+
+
+(defn db-push
+  ([key val]
+   (db-push key val *default-db*))
+  ([key val db]
+   ;; (swap! db update key conj val)
+   (swap! db assoc key (conj ((db-query key) :val) val))))
+
+
+(defmacro fact
+  [pred & args]
+  `(do (db-push '~pred '~args)
+       '~args))
+
+(comment
+
+   (clear-db)
+   => {}
+
+   (fact painter reynolds joshua english)
+   => (reynolds joshua english)
+
+   (db-query 'painter)
+   => {:val ((reynolds joshua english)), :found? true}
+
+   (fact painter canale antonio venetian)
+   => (canale antonio venetian)
+
+   (db-query 'painter)
+   => {:val ((canale antonio venetian) (reynolds joshua english)), :found true}
+
+   ((db-query 'painter) :val)
+   => ((canale antonio venetian) (reynolds joshua english))
+
+   (db-query 'lisper)
+   => {:val nil, :found false}
+
+)
+
+
+(defn lookup
+  ([pred args]
+   (lookup pred args {}))
+  ([pred args binds]
+   (do
+     (println "- lookup -")
+
+     (mapcat
+       (fn [x]
+         ;; match の結果を保持させないと、うまく動かなかった
+         (let [test (match_original x args binds)]
+           ;; (println "test:" test)
+           (aif2 test (list it))))
+       ((db-query pred) :val)))))
+
+(comment
+
+   foo.core> (lookup 'painter '(?x ?y english))
+   - lookup -
+   ({?x reynolds, ?y joshua} {?x hogarth, ?y william})
+
+
+   foo.core> (map
+                 #(match_original % '(?x ?y english) {})
+                 ((db-query 'painter) :val))
+   (nil {?x reynolds, ?y joshua})
+
+   foo.core> (mapcat
+                 #(match_original % '(?x ?y english) {})
+                 ((db-query 'painter) :val))
+   ([?x reynolds] [?y joshua])
+
+
+;;   (aif2 {:x reynolds, :y joshua} (list it))
+;;   => Syntax error compiling at (src/foo/core.clj:205:1).
+;;      Unable to resolve symbol: reynolds in this context
+
+   (aif2 {:x 'reynolds, :y "joshua"} (list it))
+   => ({:x reynolds, :y "joshua"})
+
+)
+
+
+(declare interpret-query)
+
+
+(defn interpret-not
+  [clause binds]
+  (do
+    (println "- not -")
+
+    (when-not (seq (interpret-query clause binds))
+      (list binds))))
+
+
+(defn interpret-or
+  [clauses binds]
+  (do
+    (println "- or -")
+
+    (mapcat
+      #(interpret-query % binds)
+      clauses)))
+
+
+(defn interpret-and
+  [clauses binds]
+  (do
+    (println "- and -")
+
+    (if-not (seq clauses)
+      (list binds)
+      (mapcat
+        #(interpret-query (first clauses) %)
+        (interpret-and (rest clauses) binds)))))
+
+
+(defn interpret-query
+  ([expr] (interpret-query expr {}))
+  ([[opr & other] binds]
+
+   ;; (println "_:" opr other)
+
+   (case opr
+     and (interpret-and
+           ;; 結果の要素順を整えるためのもの
+           (reverse other)
+           binds)
+     or (interpret-or other binds)
+     not (interpret-not (first other) binds)
+     (lookup opr other binds))))
+
+(comment
+
+   foo.core> (interpret-query '(and (painter ?x ?y ?z) (dates ?x 1697 ?w)))
+   - and -
+   - and -
+   - and -
+   - lookup -
+   - lookup -
+   - lookup -
+   - lookup -
+   ({?x hogarth, ?y william, ?z english, ?w 1772}
+    {?x canale, ?y antonio, ?z venetian, ?w 1768})
+
+)
+
+;; =============
+
+(defn gen-facts
+  []
+  ;; init
+  (clear-db)
+
+  ;; painter
+  (fact painter canale antonio venetian)
+  (fact painter hogarth william english)
+  (fact painter reynolds joshua english)
+
+  ;; dates
+  (fact dates hogarth 1697 1772)
+  (fact dates canale 1697 1768)
+  (fact dates reynolds 1723 1792))
+
+;; =============
+
+(defmacro with-answer
+  [query & body]
+  (let [binds (gensym)]
+    `(;; doseq
+      for [~binds '~(set (interpret-query query))
+           :let [~@(mapcat
+                     (fn [v]
+                       `(~(symbol v)
+                         ;; [251126:gima]
+                         ;; キーワードではなく、シンボルをキーにした
+                         ;; (my-binding (keyword ~v) ~binds)
+                         (my-binding_original '~(symbol v) ~binds)
+                         ))
+                     (vars-in_original query))]]
+       ;; ガード
+       (do ~@body))))
+
+(comment
+
+   foo.core> (with-answer (painter hogarth ?x ?y) (list ?x ?y))
+   ((william english))
+
+   foo.core> (with-answer (and (painter ?x _ _) (dates ?x 1697 _)) (list ?x))
+   ((hogarth) (canale))
+
+   foo.core> (with-answer (or (dates ?x ?y 1772) (dates ?x ?y 1792)) (list ?x ?y))
+   ((hogarth 1697) (reynolds 1723))
+
+   foo.core> (with-answer (and (painter ?x _ english)
+                     (dates ?x ?b _)
+                     (not
+                       (and (painter ?x2 _ venetian)
+                            (dates ?x2 ?b _)))) (list ?x))
+   ((reynolds))
+
+)
+
+
+;;================
+
+(defmacro with-answer2
+  [query & body]
+  (let [binds (gensym)]
+    `(;; doseq
+      for [~binds '~(set (interpret-query query))
+           :let [~@(mapcat
+                     (fn [v]
+                       `(~(symbol v)
+                         (my-binding_original '~(symbol v) ~binds)))
+                     (vars-in query))]]
+       ;; ガード
+       (do ~@body))))
+
+;;================

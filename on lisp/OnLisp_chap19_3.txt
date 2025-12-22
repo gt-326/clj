@@ -1,0 +1,95 @@
+(defn gen-facts
+  []
+  ;; init
+  (clear-db)
+
+  ;; painter
+  (fact painter canale antonio venetian)
+  (fact painter hogarth william english)
+  (fact painter reynolds joshua english)
+
+  ;; dates
+  (fact dates hogarth 1697 1772)
+  (fact dates canale 1697 1768)
+  (fact dates reynolds 1723 1792))
+
+
+;; ===================
+
+(declare interpret-query)
+
+
+(defn interpret-not
+  [clause binds]
+  (do
+    (println "- not -")
+
+    (when-not (seq (interpret-query clause binds))
+      (list binds))))
+
+
+(defn interpret-or
+  [clauses binds]
+  (do
+    (println "- or -")
+
+    (mapcat
+      #(interpret-query % binds)
+      clauses)))
+
+
+(defn interpret-and
+  [clauses binds]
+  (do
+    (println "- and -")
+
+    (if-not (seq clauses)
+      (list binds)
+      (mapcat
+        #(interpret-query (first clauses) %)
+        (interpret-and (rest clauses) binds)))))
+
+
+(defn interpret-query
+  ([expr] (interpret-query expr {}))
+  ([[opr & other] binds]
+
+   ;; (println "_:" opr other)
+
+   (case opr
+     and (interpret-and
+           ;; 結果の要素順を整えるためのもの
+           (reverse other)
+           binds)
+     or (interpret-or other binds)
+     not (interpret-not (first other) binds)
+     (lookup opr other binds))))
+
+
+;; ===================
+
+(defn vars-in
+  ([expr] (vars-in expr #(not (and (seqable? %) (seq %)))))
+  ([expr atom?]
+   (if (atom? expr)
+     (if (varsym? expr)
+       #{(apply str (next (name expr)))}
+       (when expr #{(str expr)}))
+
+     (clojure.set/union
+       (vars-in (first expr) atom?)
+       (vars-in (next expr) atom?)))))
+
+
+(defmacro with-answer
+  [query & body]
+  (let [binds (gensym)]
+    `(;;doseq
+      for [~binds '~(set (interpret-query query))
+           :let [~@(mapcat
+                     (fn [v]
+                       `(~(symbol v)
+                         (my-binding (keyword ~v) ~binds)))
+                     (vars-in query))]]
+       ;; ガード
+       (do ~@body))))

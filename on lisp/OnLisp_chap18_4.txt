@@ -135,6 +135,12 @@
       `(= (count ~pat) ~(count coll))
       `(> (count ~pat) ~(- (count coll) 2)))))
 
+(defmacro foo
+  [opr]
+  `(if (seq? '~opr)
+     (if (= "clojure.core/nth" (str (first '~opr))) ~opr '~opr)
+     '~opr))
+
 
 ;; =============
 
