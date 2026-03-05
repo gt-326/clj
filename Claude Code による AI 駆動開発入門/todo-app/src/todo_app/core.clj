@@ -7,8 +7,7 @@
 
 (def data-file
   ;; (str (System/getProperty "user.home") "/.todo.edn")
-  ;; (str "./log/todo.edn")
-  (str "./todo.edn"))
+  (str "./log/todo.edn"))
 
 
 (defn load-todos
