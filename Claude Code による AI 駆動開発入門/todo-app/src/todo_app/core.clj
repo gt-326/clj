@@ -10,7 +10,18 @@
   (str "./log/todo.edn"))
 
 
-(def valid-statuses {0 "未着手" 1 "進行中" 2 "保留" 3 "完了"})
+(def status-titles ["未着手" "進行中" "保留" "完了"])
+
+(def state_TODO 0)
+(def state_DOING 1)
+(def state_PENDING 2)
+(def state_DONE 3)
+
+(def valid-statuses (zipmap (iterate inc state_TODO) status-titles))
+
+
+;; msg-statuses: "0:未着手 / 1:進行中 / 2:保留 / 3:完了"
+(def msg-statuses (str/join " / " (map #(str/join ":" %) valid-statuses)))
 
 
 (defn migrate-todo
@@ -18,7 +29,7 @@
   ;; 旧フォーマット {:done true/false} → {:status "..."} に変換
   (if (contains? todo :done)
     (-> todo
-        (assoc :status (if (:done todo) "完了" "保留"))
+        (assoc :status (if (:done todo) state_DONE state_PENDING))
         (dissoc :done))
     todo))
 
@@ -42,7 +53,8 @@
 (defn add-todo
   [data title]
   (let [id   (:next-id data)
-        todo {:id id :title title :status "未着手"}]
+        todo {:id id :title title :status state_TODO}]
+
     (-> data
         (update :todos conj todo)
         (update :next-id inc))))
@@ -71,7 +83,11 @@
   (if (empty? todos)
     (println "タスクはありません。")
     (doseq [{:keys [id title status]} todos]
-      (println (format "[%s] %3d. %s" (if (= status "未着手") "　" (subs status 0 1)) id title)))))
+      (println
+        (format "[%s] %3d. %s"
+                (if (= status state_TODO) "　" (subs (get valid-statuses status) 0 1))
+                id
+                title)))))
 
 
 (defn parse-id
@@ -89,7 +105,7 @@
   (println "  add <タスク名>              タスクを追加する（初期ステータス: 未着手）")
   (println "  list                        タスク一覧を表示する")
   (println "  update <id> <番号>          ステータスを更新する")
-  (println "    0:未着手 / 1:進行中 / 2:保留 / 3:完了")
+  (println "   " msg-statuses)
   (println "  delete <id>                 タスクを削除する")
   (println "  help                        このヘルプを表示する")
   (println "  exit / quit                 終了する")
@@ -121,12 +137,13 @@
         (println "エラー: 有効な ID を指定してください。")
 
         (nil? status-label)
-        (println "エラー: ステータスは 0:未着手 / 1:進行中 / 2:保留 / 3:完了 で指定してください。")
+        (println "エラー: ステータスは" msg-statuses "で指定してください。")
+
         :else
         (let [data     (load-todos)
               todos    (:todos data)
               found?   (some #(= (:id %) id) todos)
-              new-data (update-status data id status-label)]
+              new-data (update-status data id status-num)]
           (if found?
             (do (save-todos! new-data)
                 (println (format "タスク %d を「%s」にしました。" id status-label)))
