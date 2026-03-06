@@ -10,11 +10,25 @@
   (str "./log/todo.edn"))
 
 
+(def valid-statuses {1 "未着手" 2 "進行中" 3 "保留" 4 "完了"})
+
+
+(defn migrate-todo
+  [todo]
+  ;; 旧フォーマット {:done true/false} → {:status "..."} に変換
+  (if (contains? todo :done)
+    (-> todo
+        (assoc :status (if (:done todo) "完了" "保留"))
+        (dissoc :done))
+    todo))
+
+
 (defn load-todos
   []
   (if (.exists (java.io.File. data-file))
     (try
-      (edn/read-string (slurp data-file))
+      (let [data (edn/read-string (slurp data-file))]
+        (update data :todos #(mapv migrate-todo %)))
       (catch Exception _
         {:next-id 1 :todos []}))
     {:next-id 1 :todos []}))
@@ -28,19 +42,19 @@
 (defn add-todo
   [data title]
   (let [id   (:next-id data)
-        todo {:id id :title title :done false}]
+        todo {:id id :title title :status "未着手"}]
     (-> data
         (update :todos conj todo)
         (update :next-id inc))))
 
 
-(defn mark-done
-  [data id]
+(defn update-status
+  [data id status]
   (update data :todos
           (fn [todos]
             (mapv (fn [todo]
                     (if (= (:id todo) id)
-                      (assoc todo :done true)
+                      (assoc todo :status status)
                       todo))
                   todos))))
 
@@ -56,9 +70,8 @@
   [todos]
   (if (empty? todos)
     (println "タスクはありません。")
-    (doseq [{:keys [id title done]} todos]
-      (let [status (if done "[x]" "[ ]")]
-        (println (format "%s %3d. %s" status id title))))))
+    (doseq [{:keys [id title status]} todos]
+      (println (format "[%s] %3d. %s" status id title)))))
 
 
 (defn parse-id
@@ -73,11 +86,13 @@
   []
   (println "")
   (println "TODO App - 使い方:")
-  (println "  add <タスク名>  タスクを追加する")
-  (println "  list            タスク一覧を表示する")
-  (println "  done <id>       タスクを完了にする")
-  (println "  delete <id>     タスクを削除する")
-  (println "  help            このヘルプを表示する")
+  (println "  add <タスク名>              タスクを追加する（初期ステータス: 未着手）")
+  (println "  list                        タスク一覧を表示する")
+  (println "  update <id> <番号>          ステータスを更新する")
+  (println "    1:未着手 / 2:進行中 / 3:保留 / 4:完了")
+  (println "  delete <id>                 タスクを削除する")
+  (println "  help                        このヘルプを表示する")
+  (println "  exit / quit                 終了する")
   (println ""))
 
 
@@ -97,17 +112,27 @@
     (let [data (load-todos)]
       (print-todos (:todos data)))
 
-    "done"
-    (let [id (some-> (first rest-args) parse-id)]
-      (if (nil? id)
+    "update"
+    (let [id          (some-> (first rest-args) parse-id)
+          status-num  (some-> (second rest-args) parse-id)
+          status-label (get valid-statuses status-num)]
+      (cond
+        (nil? id)
         (println "エラー: 有効な ID を指定してください。")
+
+        (nil? status-label)
+        (println "エラー: ステータスは 1:未着手 / 2:進行中 / 3:保留 / 4:完了 で指定してください。")
+
+
+
+        :else
         (let [data     (load-todos)
               todos    (:todos data)
               found?   (some #(= (:id %) id) todos)
-              new-data (mark-done data id)]
+              new-data (update-status data id status-label)]
           (if found?
             (do (save-todos! new-data)
-                (println (format "タスク %d を完了にしました。" id)))
+                (println (format "タスク %d を「%s」にしました。" id status-label)))
             (println (format "エラー: ID %d のタスクが見つかりません。" id))))))
 
     "delete"
