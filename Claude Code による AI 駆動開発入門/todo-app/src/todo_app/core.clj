@@ -10,7 +10,7 @@
   (str "./log/todo.edn"))
 
 
-(def valid-statuses {1 "未着手" 2 "進行中" 3 "保留" 4 "完了"})
+(def valid-statuses {0 "未着手" 1 "進行中" 2 "保留" 3 "完了"})
 
 
 (defn migrate-todo
@@ -71,7 +71,7 @@
   (if (empty? todos)
     (println "タスクはありません。")
     (doseq [{:keys [id title status]} todos]
-      (println (format "[%s] %3d. %s" status id title)))))
+      (println (format "[%s] %3d. %s" (if (= status "未着手") "　" (subs status 0 1)) id title)))))
 
 
 (defn parse-id
@@ -89,7 +89,7 @@
   (println "  add <タスク名>              タスクを追加する（初期ステータス: 未着手）")
   (println "  list                        タスク一覧を表示する")
   (println "  update <id> <番号>          ステータスを更新する")
-  (println "    1:未着手 / 2:進行中 / 3:保留 / 4:完了")
+  (println "    0:未着手 / 1:進行中 / 2:保留 / 3:完了")
   (println "  delete <id>                 タスクを削除する")
   (println "  help                        このヘルプを表示する")
   (println "  exit / quit                 終了する")
@@ -121,10 +121,7 @@
         (println "エラー: 有効な ID を指定してください。")
 
         (nil? status-label)
-        (println "エラー: ステータスは 1:未着手 / 2:進行中 / 3:保留 / 4:完了 で指定してください。")
-
-
-
+        (println "エラー: ステータスは 0:未着手 / 1:進行中 / 2:保留 / 3:完了 で指定してください。")
         :else
         (let [data     (load-todos)
               todos    (:todos data)
