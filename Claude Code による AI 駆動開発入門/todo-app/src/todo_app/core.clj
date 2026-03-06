@@ -81,48 +81,73 @@
   (println ""))
 
 
+(defn run-command
+  [cmd rest-args]
+  (case cmd
+    "add"
+    (let [title (str/join " " rest-args)]
+      (if (str/blank? title)
+        (println "エラー: タスク名を入力してください。")
+        (let [data     (load-todos)
+              new-data (add-todo data title)]
+          (save-todos! new-data)
+          (println (format "タスクを追加しました: %s" title)))))
+
+    "list"
+    (let [data (load-todos)]
+      (print-todos (:todos data)))
+
+    "done"
+    (let [id (some-> (first rest-args) parse-id)]
+      (if (nil? id)
+        (println "エラー: 有効な ID を指定してください。")
+        (let [data     (load-todos)
+              todos    (:todos data)
+              found?   (some #(= (:id %) id) todos)
+              new-data (mark-done data id)]
+          (if found?
+            (do (save-todos! new-data)
+                (println (format "タスク %d を完了にしました。" id)))
+            (println (format "エラー: ID %d のタスクが見つかりません。" id))))))
+
+    "delete"
+    (let [id (some-> (first rest-args) parse-id)]
+      (if (nil? id)
+        (println "エラー: 有効な ID を指定してください。")
+        (let [data     (load-todos)
+              todos    (:todos data)
+              found?   (some #(= (:id %) id) todos)
+              new-data (delete-todo data id)]
+          (if found?
+            (do (save-todos! new-data)
+                (println (format "タスク %d を削除しました。" id)))
+            (println (format "エラー: ID %d のタスクが見つかりません。" id))))))
+
+    (print-help)))
+
+
 (defn -main
   [& args]
-  (let [cmd      (first args)
-        rest-args (rest args)]
-    (case cmd
-      "add"
-      (let [title (str/join " " rest-args)]
-        (if (str/blank? title)
-          (println "エラー: タスク名を入力してください。")
-          (let [data     (load-todos)
-                new-data (add-todo data title)]
-            (save-todos! new-data)
-            (println (format "タスクを追加しました: %s" title)))))
+  (if (empty? args)
+    ;; mode: repl
+    (do
+      (println "TODO App へようこそ。help でコマンド一覧を表示します。")
+      (loop []
+        (print "todo> ")
+        (flush)
+        (let [line (read-line)]
+          (when (some? line)                        ; Ctrl+D (EOF) で終了
+            (let [tokens    (str/split (str/trim line) #"\s+")
+                  cmd       (first tokens)
+                  rest-args (rest tokens)]
+              (when-not (str/blank? line)
+                (if (contains? #{"exit" "quit"} cmd)
+                  (do (println "さようなら。")
+                      (System/exit 0))
+                  (run-command cmd rest-args))))
+            (recur)))))
 
-      "list"
-      (let [data (load-todos)]
-        (print-todos (:todos data)))
-
-      "done"
-      (let [id (some-> (first rest-args) parse-id)]
-        (if (nil? id)
-          (println "エラー: 有効な ID を指定してください。")
-          (let [data       (load-todos)
-                todos      (:todos data)
-                found?     (some #(= (:id %) id) todos)
-                new-data   (mark-done data id)]
-            (if found?
-              (do (save-todos! new-data)
-                  (println (format "タスク %d を完了にしました。" id)))
-              (println (format "エラー: ID %d のタスクが見つかりません。" id))))))
-
-      "delete"
-      (let [id (some-> (first rest-args) parse-id)]
-        (if (nil? id)
-          (println "エラー: 有効な ID を指定してください。")
-          (let [data     (load-todos)
-                todos    (:todos data)
-                found?   (some #(= (:id %) id) todos)
-                new-data (delete-todo data id)]
-            (if found?
-              (do (save-todos! new-data)
-                  (println (format "タスク %d を削除しました。" id)))
-              (println (format "エラー: ID %d のタスクが見つかりません。" id))))))
-
-      (print-help))))
+    ;; mode: simple
+    (let [cmd      (first args)
+          rest-args (rest args)]
+      (run-command cmd rest-args))))
