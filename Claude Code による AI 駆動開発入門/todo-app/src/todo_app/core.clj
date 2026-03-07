@@ -22,8 +22,14 @@
 (def valid-statuses (zipmap (iterate inc state_TODO) status-titles))
 
 
-;; msg-statuses: "0:未着手 / 1:進行中 / 2:保留 / 3:完了"
-(def msg-statuses (str/join " / " (map #(str/join ":" %) valid-statuses)))
+;; msg-statuses: "1:進行中 / 2:保留 / 3:完了"
+(def msg-statuses (str/join " / " (map #(str/join ":" %) (rest valid-statuses))))
+
+
+(defn now
+  []
+  (.format (java.time.LocalDateTime/now)
+           (java.time.format.DateTimeFormatter/ofPattern "yy-MM-dd HH:mm")))
 
 
 (defn migrate-todo
@@ -55,7 +61,7 @@
 (defn add-todo
   [data title]
   (let [id   (:next-id data)
-        todo {:id id :title title :status state_TODO}]
+        todo {:id id :title title :status state_TODO :start-at nil :end-at nil}]
 
     (-> data
         (update :todos conj todo)
@@ -68,7 +74,9 @@
           (fn [todos]
             (mapv (fn [todo]
                     (if (= (:id todo) id)
-                      (assoc todo :status status)
+                      (cond-> (assoc todo :status status)
+                        (= status state_DOING) (assoc :start-at (now))
+                        (= status state_DONE) (assoc :end-at (now)))
                       todo))
                   todos))))
 
@@ -84,12 +92,14 @@
   [todos]
   (if (empty? todos)
     (println "タスクはありません。")
-    (doseq [{:keys [id title status]} todos]
+    (doseq [{:keys [id title status start-at end-at]} todos]
       (println
-        (format "[%s] %3d. %s"
+        (format "[%s] %3d. %s [%s  %s]"
                 (if (= status state_TODO) "　" (subs (get valid-statuses status) 0 1))
                 id
-                title)))))
+                title
+                (if start-at (str "開始:" start-at) "")
+                (if end-at   (str "終了:" end-at) ""))))))
 
 
 (defn parse-id
@@ -139,6 +149,9 @@
         (println "エラー: 有効な ID を指定してください。")
 
         (nil? status-label)
+        (println "エラー: ステータスは" msg-statuses "で指定してください。")
+
+        (not (pos? status-num))
         (println "エラー: ステータスは" msg-statuses "で指定してください。")
 
         :else
