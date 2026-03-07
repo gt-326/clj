@@ -10,13 +10,15 @@
   (str "./log/todo.edn"))
 
 
-(def status-titles ["未着手" "進行中" "保留" "完了"])
-
 (def state_TODO 0)
 (def state_DOING 1)
 (def state_PENDING 2)
 (def state_DONE 3)
 
+(def status-titles ["未着手" "進行中" "保留" "完了"])
+
+
+;; valid-statuses: {0 "未着手", 1 "進行中", 2 "保留", 3 "完了"}
 (def valid-statuses (zipmap (iterate inc state_TODO) status-titles))
 
 
