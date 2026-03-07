@@ -92,18 +92,21 @@
             (filterv #(not= (:id %) id) todos))))
 
 
-(defn print-todos
+(defn format-todos
   [todos]
   (if (empty? todos)
-    (println "タスクはありません。")
-    (doseq [{:keys [id title status start-at end-at]} todos]
-      (println
-        (format "[%s] %3d. %s [%s  %s]"
-                (if (= status state_TODO) "　" (subs (get valid-statuses status) 0 1))
-                id
-                title
-                (if start-at (str "開始:" start-at) "")
-                (if end-at   (str "終了:" end-at) ""))))))
+    "タスクはありません。"
+    (str/join "\n"
+              (map (fn [{:keys [id title status start-at end-at]}]
+                     (format "[%s] %3d. %s [%s  %s]"
+                             (if (= status state_TODO)
+                               "　"
+                               (subs (get valid-statuses status) 0 1))
+                             id
+                             title
+                             (if start-at (str "開始:" start-at) "")
+                             (if end-at   (str "終了:" end-at) "")))
+                   todos))))
 
 
 (defn parse-id
@@ -114,19 +117,20 @@
       nil)))
 
 
-(defn print-help
+(defn format-help
   []
-  (println "")
-  (println "TODO App - 使い方:")
-  (println "  add <タスク名>              タスクを追加する（初期ステータス: 未着手）")
-  (println "  list [番号]                 タスク一覧を表示する（番号指定でフィルタリング）")
-  (println "   " msg-statuses)
-  (println "  update <id> <番号>          ステータスを更新する")
-  (println "   " msg-update-statuses)
-  (println "  delete <id>                 タスクを削除する")
-  (println "  help                        このヘルプを表示する")
-  (println "  exit / quit                 終了する")
-  (println ""))
+  (str/join "\n"
+            [""
+             "TODO App - 使い方:"
+             "  add <タスク名>              タスクを追加する（初期ステータス: 未着手）"
+             "  list [番号]                 タスク一覧を表示する（番号指定でフィルタリング）"
+             (str "   " msg-statuses)
+             "  update <id> <番号>          ステータスを更新する"
+             (str "   " msg-update-statuses)
+             "  delete <id>                 タスクを削除する"
+             "  help                        このヘルプを表示する"
+             "  exit / quit                 終了する"
+             ""]))
 
 
 (defn run-command
@@ -135,11 +139,11 @@
     "add"
     (let [title (str/join " " rest-args)]
       (if (str/blank? title)
-        (println "エラー: タスク名を入力してください。")
+        "エラー: タスク名を入力してください。"
         (let [data     (load-todos)
               new-data (add-todo data title)]
           (save-todos! new-data)
-          (println (format "タスクを追加しました: %s" title)))))
+          (format "タスクを追加しました: %s" title))))
 
     "list"
     (let [data       (load-todos)
@@ -147,13 +151,13 @@
           filter-label (get valid-statuses status-num)]
       (cond
         (and (some? status-num) (nil? filter-label))
-        (println "エラー: ステータスは" msg-statuses "で指定してください。")
+        (str "エラー: ステータスは" msg-statuses "で指定してください。")
 
         filter-label
-        (print-todos (filterv #(= (:status %) status-num) (:todos data)))
+        (format-todos (filterv #(= (:status %) status-num) (:todos data)))
 
         :else
-        (print-todos (:todos data))))
+        (format-todos (:todos data))))
 
     "update"
     (let [id          (some-> (first rest-args) parse-id)
@@ -161,13 +165,13 @@
           status-label (get valid-statuses status-num)]
       (cond
         (nil? id)
-        (println "エラー: 有効な ID を指定してください。")
+        "エラー: 有効な ID を指定してください。"
 
         (nil? status-label)
-        (println "エラー: ステータスは" msg-update-statuses "で指定してください。")
+        (str "エラー: ステータスは" msg-update-statuses "で指定してください。")
 
         (not (pos? status-num))
-        (println "エラー: ステータスは" msg-update-statuses "で指定してください。")
+        (str "エラー: ステータスは" msg-update-statuses "で指定してください。")
 
         :else
         (let [data     (load-todos)
@@ -176,23 +180,23 @@
               new-data (update-status data id status-num)]
           (if found?
             (do (save-todos! new-data)
-                (println (format "タスク %d を「%s」にしました。" id status-label)))
-            (println (format "エラー: ID %d のタスクが見つかりません。" id))))))
+                (format "タスク %d を「%s」にしました。" id status-label))
+            (format "エラー: ID %d のタスクが見つかりません。" id)))))
 
     "delete"
     (let [id (some-> (first rest-args) parse-id)]
       (if (nil? id)
-        (println "エラー: 有効な ID を指定してください。")
+        "エラー: 有効な ID を指定してください。"
         (let [data     (load-todos)
               todos    (:todos data)
               found?   (some #(= (:id %) id) todos)
               new-data (delete-todo data id)]
           (if found?
             (do (save-todos! new-data)
-                (println (format "タスク %d を削除しました。" id)))
-            (println (format "エラー: ID %d のタスクが見つかりません。" id))))))
+                (format "タスク %d を削除しました。" id))
+            (format "エラー: ID %d のタスクが見つかりません。" id)))))
 
-    (print-help)))
+    (format-help)))
 
 
 (defn -main
@@ -213,10 +217,10 @@
                 (if (contains? #{"exit" "quit"} cmd)
                   (do (println "さようなら。")
                       (System/exit 0))
-                  (run-command cmd rest-args))))
+                  (println (run-command cmd rest-args)))))
             (recur)))))
 
     ;; mode: simple
     (let [cmd      (first args)
           rest-args (rest args)]
-      (run-command cmd rest-args))))
+      (println (run-command cmd rest-args)))))
