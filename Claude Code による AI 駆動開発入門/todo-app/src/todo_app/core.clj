@@ -22,8 +22,12 @@
 (def valid-statuses (zipmap (iterate inc state_TODO) status-titles))
 
 
-;; msg-statuses: "1:進行中 / 2:保留 / 3:完了"
-(def msg-statuses (str/join " / " (map #(str/join ":" %) (rest valid-statuses))))
+;; msg-statuses: "0:未着手 / 1:進行中 / 2:保留 / 3:完了"
+(def msg-statuses (str/join " / " (map #(str/join ":" %) valid-statuses)))
+
+
+;; msg-update-statuses: "1:進行中 / 2:保留 / 3:完了"
+(def msg-update-statuses (str/join " / " (map #(str/join ":" %) (rest valid-statuses))))
 
 
 (defn now
@@ -115,9 +119,10 @@
   (println "")
   (println "TODO App - 使い方:")
   (println "  add <タスク名>              タスクを追加する（初期ステータス: 未着手）")
-  (println "  list                        タスク一覧を表示する")
-  (println "  update <id> <番号>          ステータスを更新する")
+  (println "  list [番号]                 タスク一覧を表示する（番号指定でフィルタリング）")
   (println "   " msg-statuses)
+  (println "  update <id> <番号>          ステータスを更新する")
+  (println "   " msg-update-statuses)
   (println "  delete <id>                 タスクを削除する")
   (println "  help                        このヘルプを表示する")
   (println "  exit / quit                 終了する")
@@ -137,8 +142,18 @@
           (println (format "タスクを追加しました: %s" title)))))
 
     "list"
-    (let [data (load-todos)]
-      (print-todos (:todos data)))
+    (let [data       (load-todos)
+          status-num (some-> (first rest-args) parse-id)
+          filter-label (get valid-statuses status-num)]
+      (cond
+        (and (some? status-num) (nil? filter-label))
+        (println "エラー: ステータスは" msg-statuses "で指定してください。")
+
+        filter-label
+        (print-todos (filterv #(= (:status %) status-num) (:todos data)))
+
+        :else
+        (print-todos (:todos data))))
 
     "update"
     (let [id          (some-> (first rest-args) parse-id)
@@ -149,10 +164,10 @@
         (println "エラー: 有効な ID を指定してください。")
 
         (nil? status-label)
-        (println "エラー: ステータスは" msg-statuses "で指定してください。")
+        (println "エラー: ステータスは" msg-update-statuses "で指定してください。")
 
         (not (pos? status-num))
-        (println "エラー: ステータスは" msg-statuses "で指定してください。")
+        (println "エラー: ステータスは" msg-update-statuses "で指定してください。")
 
         :else
         (let [data     (load-todos)
