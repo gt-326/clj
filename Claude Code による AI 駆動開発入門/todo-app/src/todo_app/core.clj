@@ -2,25 +2,9 @@
   (:gen-class)
   (:require
     [clojure.string :as str]
+    [todo-app.status :as status]
     [todo-app.store :as store]
     [todo-app.todo :as todo]))
-
-
-(defn format-todos
-  [todos]
-  (if (empty? todos)
-    "タスクはありません。"
-    (str/join "\n"
-              (map (fn [{:keys [id title status start-at end-at]}]
-                     (format "[%s] %3d. %s [%s  %s]"
-                             (if (= status :todo)
-                               "　"
-                               (subs (todo/status-labels status) 0 1))
-                             id
-                             title
-                             (if start-at (str "開始:" start-at) "")
-                             (if end-at   (str "終了:" end-at) "")))
-                   todos))))
 
 
 (defn parse-id
@@ -31,75 +15,61 @@
       nil)))
 
 
-(defn format-help
-  []
-  (str/join "\n"
-            [""
-             "TODO App - 使い方:"
-             "  add <タスク名>              タスクを追加する（初期ステータス: 未着手）"
-             "  list [番号]                 タスク一覧を表示する（番号指定でフィルタリング）"
-             (str "   " todo/msg-statuses)
-             "  update <id> <番号>          ステータスを更新する"
-             (str "   " todo/msg-update-statuses)
-             "  delete <id>                 タスクを削除する"
-             "  help                        このヘルプを表示する"
-             "  exit / quit                 終了する"
-             ""]))
-
-
-(defn now
-  []
-  (.format (java.time.LocalDateTime/now)
-           (java.time.format.DateTimeFormatter/ofPattern "yy-MM-dd HH:mm")))
-
-
-(defn validate-input
-  [data-atom cmd rest-args]
+(defn parse-command
+  [cmd rest-args datetime]
   (case cmd
     "add"
     (let [title (str/join " " rest-args)]
       (if (str/blank? title)
         {:error "エラー: タスク名を入力してください。"}
-        {:cmd cmd :title title :data-atom data-atom}))
+        {:cmd cmd :title title}))
 
     "list"
-    (let [status-num   (some-> (first rest-args) parse-id)
-          status-key (get todo/stat-keys status-num)]
+    (let [status-num (some-> (first rest-args) parse-id)
+          status-key (get status/stat-keys status-num)]
       (if (and (some? status-num) (nil? status-key))
-        {:error (str "エラー: ステータスは [ " todo/msg-statuses " ] で指定してください。")}
-        {:cmd cmd :filter-status-key status-key :data-atom data-atom}))
+        {:error (str "エラー: ステータスは [ " status/msg-statuses " ] で指定してください。")}
+        {:cmd cmd :filter-status-key status-key}))
 
     "update"
     (let [id           (some-> (first rest-args) parse-id)
           status-num   (some-> (second rest-args) parse-id)
-          status-label (get todo/valid-statuses status-num)]
+          status-label (status/valid-statuses status-num)]
       (cond
         (nil? id)
         {:error "エラー: 有効な ID を指定してください。"}
 
         (nil? status-label)
         {:error
-         (str "エラー: ステータスは [ " todo/msg-update-statuses " ] で指定してください。")}
+         (str "エラー: ステータスは [ " status/msg-update-statuses " ] で指定してください。")}
 
         (not (pos? status-num))
         {:error
-         (str "エラー: ステータスは [ " todo/msg-update-statuses " ] で指定してください。")}
+         (str "エラー: ステータスは [ " status/msg-update-statuses " ] で指定してください。")}
 
         :else
         {:cmd cmd
          :id id
          :status-label status-label
          :status-num status-num
-         :data-atom  data-atom}))
+         :now datetime}))
 
     "delete"
     (let [id (some-> (first rest-args) parse-id)]
       (if (nil? id)
         {:error "エラー: 有効な ID を指定してください。"}
-        {:cmd cmd :id id :data-atom data-atom}))
+        {:cmd cmd :id id}))
 
     ;; default
     {:cmd "help"}))
+
+
+(defn validate-input
+  [data-atom cmd rest-args datetime]
+  (let [result (parse-command cmd rest-args  datetime)]
+    (if (:error result)
+      result
+      (assoc result :data-atom data-atom))))
 
 
 (defn execute-command!
@@ -128,9 +98,13 @@
         (let [todos  (:todos @data-atom)
               id     (:id validated)]
           (if (some #(= (:id %) id) todos)
-            (let [new-data (if (= "update" cmd)
-                             (todo/update-status @data-atom id (:status-num validated) (now))
-                             (todo/delete-todo @data-atom id))]
+            (let [new-data (if (= "delete" cmd)
+                             (todo/delete-todo @data-atom id)
+                             (todo/update-status
+                               @data-atom
+                               id
+                               (:status-num validated)
+                               (:now validated)))]
               ;; ファイルへ書き込み
               (store/save-todos! new-data)
               ;; atom 更新
@@ -138,6 +112,39 @@
 
               (assoc validated :found? true))
             (assoc validated :found? false)))))))
+
+
+(defn format-todos
+  [todos]
+  (if (empty? todos)
+    "タスクはありません。"
+    (str/join "\n"
+              (map (fn [{:keys [id title status start-at end-at]}]
+                     (format "[%s] %3d. %s [%s  %s]"
+                             (if (= status :todo)
+                               "　"
+                               (subs (status/status-labels status) 0 1))
+                             id
+                             title
+                             (if start-at (str "開始:" start-at) "")
+                             (if end-at   (str "終了:" end-at) "")))
+                   todos))))
+
+
+(defn format-help
+  []
+  (str/join "\n"
+            [""
+             "TODO App - 使い方:"
+             "  add <タスク名>              タスクを追加する（初期ステータス: 未着手）"
+             "  list [番号]                 タスク一覧を表示する（番号指定でフィルタリング）"
+             (str "   " status/msg-statuses)
+             "  update <id> <番号>          ステータスを更新する"
+             (str "   " status/msg-update-statuses)
+             "  delete <id>                 タスクを削除する"
+             "  help                        このヘルプを表示する"
+             "  exit / quit                 終了する"
+             ""]))
 
 
 (defn format-result
@@ -157,11 +164,17 @@
 
 
 (defn run-command
-  [data-atom cmd rest-args]
-  (-> (validate-input data-atom cmd rest-args)
+  [data-atom cmd rest-args datetime]
+  (-> (validate-input data-atom cmd rest-args datetime)
       execute-command!
       format-result
       println))
+
+
+(defn now
+  []
+  (.format (java.time.LocalDateTime/now)
+           (java.time.format.DateTimeFormatter/ofPattern "yy-MM-dd HH:mm")))
 
 
 (defn -main
@@ -186,10 +199,10 @@
                   (if (contains? #{"exit" "quit"} cmd)
                     (do (println "さようなら。")
                         (System/exit 0))
-                    (run-command data-atom cmd rest-args))))
+                    (run-command data-atom cmd rest-args (now)))))
               (recur)))))
 
       ;; mode: simple
       (let [cmd      (first args)
             rest-args (rest args)]
-        (run-command data-atom cmd rest-args)))))
+        (run-command data-atom cmd rest-args (now))))))
