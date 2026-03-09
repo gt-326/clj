@@ -21,11 +21,27 @@ Clojure 製のスタンドアロン CUI（コマンドライン）TODO アプリ
 
 ## ファイル構成
 
+### ソース
+
 | ファイル | 名前空間 | 責務 |
 |----------|----------|------|
+| `src/todo_app/status.clj` | `todo-app.status` | ステータス定数・メッセージ生成 |
+| `src/todo_app/todo.clj` | `todo-app.todo` | ドメインロジック（純粋関数のみ） |
 | `src/todo_app/store.clj` | `todo-app.store` | 永続化（ファイル読み書き・初期化） |
-| `src/todo_app/todo.clj` | `todo-app.todo` | ドメインロジック（タスク操作・ステータス定義） |
 | `src/todo_app/core.clj` | `todo-app.core` | UI・エントリポイント（コマンド解釈・表示） |
+
+### テスト
+
+| ファイル | テスト対象 |
+|----------|------------|
+| `test/todo_app/status_test.clj` | ステータス定数の値 |
+| `test/todo_app/todo_test.clj` | `add-todo` / `update-status` / `delete-todo` |
+| `test/todo_app/core_test.clj` | `parse-id` / `parse-command` / `format-*` / `execute-command!` |
+| `test/todo_app/store_test.clj` | `initialize-store!` / `load-todos` / `save-todos!` |
+
+```bash
+lein test   # 全テスト実行
+```
 
 ---
 
@@ -39,7 +55,7 @@ lein repl
 
 ```clojure
 (-main)                        ;; 引数なし → REPL モード（対話ループ）
-(-main "add" "買い物をする")    ;; シンプルモード（1コマンド実行）
+(-main "add" "買い物をする")   ;; シンプルモード（1コマンド実行）
 (-main "list")
 (-main "update" "1" "3")
 (-main "delete" "2")
@@ -79,8 +95,6 @@ java -jar target/uberjar/todo-app-1.0.0-standalone.jar list
 
 ## `-main` の動作モード
 
-`-main` は引数の有無によって動作モードが切り替わる。
-
 ```
 引数なし → REPL モード（対話ループ）
   - プロンプト "todo> " を表示し入力を待つ
@@ -95,7 +109,7 @@ java -jar target/uberjar/todo-app-1.0.0-standalone.jar list
 `run-command` は以下の3段階で処理する：
 
 ```
-validate-input   入力の検証（エラーチェック・パース）
+validate-input   入力の検証（parse-command の結果に :data-atom を付加）
      ↓
 execute-command! コマンドの実行（データ操作・永続化）
      ↓
@@ -103,6 +117,8 @@ format-result    結果の文字列化（表示用フォーマット）
      ↓
 println          出力
 ```
+
+`parse-command` は純粋関数。`validate-input` はそのラッパーで `:data-atom` を付加する。
 
 ---
 
@@ -117,7 +133,7 @@ println          出力
 | `lein run` / REPL | `./log/todo.edn`（カレントディレクトリ相対） |
 | uberjar（`java -jar`） | JAR ファイルと同じディレクトリの `log/todo.edn` |
 
-JAR 実行時は `todo_app/store.clj` リソースの URL プロトコルが `jar:` かどうかで判定し、JAR の絶対パスを `java.net.URI` 経由で取得する（URL エンコード対策）。
+JAR 実行時はリソース URL のプロトコルが `jar:` かどうかで判定し、JAR の絶対パスを `java.net.URI` 経由で取得する（URL エンコード対策）。
 
 ### 初期化
 
@@ -162,7 +178,7 @@ JAR 実行時は `todo_app/store.clj` リソースの URL プロトコルが `ja
 ### ステータス一覧
 
 | 番号 | キーワード | 表示名 | `list` フィルタ | `update` 指定 |
-|------|-----------|--------|----------------|--------------|
+|------|-----------|--------|----------------|--------------:|
 | 0 | `:todo` | 未着手 | 可 | 不可 |
 | 1 | `:doing` | 進行中 | 可 | 可 |
 | 2 | `:pending` | 保留 | 可 | 可 |
@@ -173,7 +189,7 @@ JAR 実行時は `todo_app/store.clj` リソースの URL プロトコルが `ja
 ### ステータス遷移による日時の自動設定
 
 | 変更後のステータス | `start-at` | `end-at` |
-|------------------|-----------|---------|
+|------------------|-----------|---------:|
 | `:doing`（進行中） | 現在日時を設定 | `nil` にリセット |
 | `:done`（完了） | 変更なし | 現在日時を設定 |
 | `:pending`（保留） | 変更なし | `nil` にリセット |
@@ -200,7 +216,7 @@ JAR 実行時は `todo_app/store.clj` リソースの URL プロトコルが `ja
 |------|------|
 | `add` でタスク名が空 | エラーメッセージ表示 |
 | `update` / `delete` で ID が数値でない | エラーメッセージ表示 |
-| `update` で無効なステータス番号 | エラーメッセージ表示 |
+| `update` で無効なステータス番号（0 または範囲外） | エラーメッセージ表示 |
 | 指定 ID のタスクが存在しない | エラーメッセージ表示 |
 | EDN ファイルが壊れている | 初期データ `{:next-id 1 :todos []}` で代替 |
 
@@ -212,3 +228,6 @@ JAR 実行時は `todo_app/store.clj` リソースの URL プロトコルが `ja
 - **書き込みは都度**: 各コマンド実行後に即時 EDN ファイルへ保存（異常終了時のデータ保護）
 - **保存 → アトム更新の順**: 保存失敗時にアトムが汚染されない
 - **`todo.clj` は純粋関数のみ**: 副作用（現在時刻取得・ファイル操作）は `core.clj` / `store.clj` に分離
+- **`datetime` の依存性注入**: `now` は `-main` の入口で1回だけ呼び出し、文字列として `run-command` → `parse-command` と流す。テスト時は固定文字列を渡せる
+- **`parse-command` は純粋関数**: `validate-input` のラッパーとして分離することで、`data-atom` なしに単体テスト可能
+- **ベクターアクセスに `get` を使用**: `(get stat-keys n)` は範囲外・nil で例外を投げず `nil` を返す（`parse-command` / `update-status`）
