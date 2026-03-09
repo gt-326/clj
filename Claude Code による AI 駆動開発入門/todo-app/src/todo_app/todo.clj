@@ -31,12 +31,6 @@
 (def msg-update-statuses (gen-msg (rest valid-statuses)))
 
 
-(defn now
-  []
-  (.format (java.time.LocalDateTime/now)
-           (java.time.format.DateTimeFormatter/ofPattern "yy-MM-dd HH:mm")))
-
-
 (defn add-todo
   [data title]
   (let [id   (:next-id data)
@@ -52,15 +46,16 @@
 
 
 (defn update-status
-  [data id stat-num]
+  [data id stat-num datetime]
   (update data :todos
           (fn [todos]
             (mapv (fn [todo]
                     (if (= (:id todo) id)
                       (let [stat-key (stat-keys stat-num)]
                         (cond-> (assoc todo :status stat-key)
-                          (= stat-key :doing) (assoc :start-at (now))
-                          (= stat-key :done) (assoc :end-at (now))))
+                          (= stat-key :pending) (assoc :end-at nil)
+                          (= stat-key :doing) (assoc :start-at datetime :end-at nil)
+                          (= stat-key :done) (assoc :end-at datetime)))
                       todo))
                   todos))))
 

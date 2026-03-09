@@ -47,75 +47,121 @@
              ""]))
 
 
+(defn now
+  []
+  (.format (java.time.LocalDateTime/now)
+           (java.time.format.DateTimeFormatter/ofPattern "yy-MM-dd HH:mm")))
+
+
+(defn validate-input
+  [data-atom cmd rest-args]
+  (case cmd
+    "add"
+    (let [title (str/join " " rest-args)]
+      (if (str/blank? title)
+        {:error "エラー: タスク名を入力してください。"}
+        {:cmd cmd :title title :data-atom data-atom}))
+
+    "list"
+    (let [status-num   (some-> (first rest-args) parse-id)
+          status-key (get todo/stat-keys status-num)]
+      (if (and (some? status-num) (nil? status-key))
+        {:error (str "エラー: ステータスは [ " todo/msg-statuses " ] で指定してください。")}
+        {:cmd cmd :filter-status-key status-key :data-atom data-atom}))
+
+    "update"
+    (let [id           (some-> (first rest-args) parse-id)
+          status-num   (some-> (second rest-args) parse-id)
+          status-label (get todo/valid-statuses status-num)]
+      (cond
+        (nil? id)
+        {:error "エラー: 有効な ID を指定してください。"}
+
+        (nil? status-label)
+        {:error
+         (str "エラー: ステータスは [ " todo/msg-update-statuses " ] で指定してください。")}
+
+        (not (pos? status-num))
+        {:error
+         (str "エラー: ステータスは [ " todo/msg-update-statuses " ] で指定してください。")}
+
+        :else
+        {:cmd cmd
+         :id id
+         :status-label status-label
+         :status-num status-num
+         :data-atom  data-atom}))
+
+    "delete"
+    (let [id (some-> (first rest-args) parse-id)]
+      (if (nil? id)
+        {:error "エラー: 有効な ID を指定してください。"}
+        {:cmd cmd :id id :data-atom data-atom}))
+
+    ;; default
+    {:cmd "help"}))
+
+
+(defn execute-command!
+  [validated]
+  (if (or (:error validated) (= "help" (:cmd validated)))
+    validated
+    (let [cmd (:cmd validated)
+          data-atom (:data-atom validated)]
+      (case cmd
+        "add"
+        (let [new-data (todo/add-todo @data-atom (:title validated))]
+          ;; ファイルへ書き込み
+          (store/save-todos! new-data)
+          ;; atom 更新
+          (reset! data-atom new-data)
+          validated)
+
+        "list"
+        (let [todos (:todos @data-atom)
+              result (if (:filter-status-key validated)
+                       (filterv #(= (:status %) (:filter-status-key validated)) todos)
+                       todos)]
+          (assoc validated :todos result))
+
+        ;; default (update/delete)
+        (let [todos  (:todos @data-atom)
+              id     (:id validated)]
+          (if (some #(= (:id %) id) todos)
+            (let [new-data (if (= "update" cmd)
+                             (todo/update-status @data-atom id (:status-num validated) (now))
+                             (todo/delete-todo @data-atom id))]
+              ;; ファイルへ書き込み
+              (store/save-todos! new-data)
+              ;; atom 更新
+              (reset! data-atom new-data)
+
+              (assoc validated :found? true))
+            (assoc validated :found? false)))))))
+
+
+(defn format-result
+  [result]
+  (if (:error result)
+    (:error result)
+    (case (:cmd result)
+      "add"    (format "タスクを追加しました: %s" (:title result))
+      "list"   (format-todos (:todos result))
+      "update" (if (:found? result)
+                 (format "タスク %d を「%s」にしました。" (:id result) (:status-label result))
+                 (format "エラー: ID %d のタスクが見つかりません。" (:id result)))
+      "delete" (if (:found? result)
+                 (format "タスク %d を削除しました。" (:id result))
+                 (format "エラー: ID %d のタスクが見つかりません。" (:id result)))
+      "help"   (format-help))))
+
+
 (defn run-command
   [data-atom cmd rest-args]
-  (let [data @data-atom]
-    (case cmd
-      "add"
-      (let [title (str/join " " rest-args)]
-        (if (str/blank? title)
-          "エラー: タスク名を入力してください。"
-          (let [new-data (todo/add-todo data title)]
-            ;; 更新
-            (reset! data-atom new-data)
-            (store/save-todos! new-data)
-            (format "タスクを追加しました: %s" title))))
-
-      "list"
-      (let [stat-num (some-> (first rest-args) parse-id)
-            filter-label (get todo/valid-statuses stat-num)]
-        (cond
-          (and (some? stat-num) (nil? filter-label))
-          (str "エラー: ステータスは [ " todo/msg-statuses " ] で指定してください。")
-
-          filter-label
-          (format-todos (filterv #(= (:status %) (todo/stat-keys stat-num)) (:todos data)))
-
-          :else
-          (format-todos (:todos data))))
-
-      "update"
-      (let [id          (some-> (first rest-args) parse-id)
-            status-num  (some-> (second rest-args) parse-id)
-            status-label (get todo/valid-statuses status-num)]
-        (cond
-          (nil? id)
-          "エラー: 有効な ID を指定してください。"
-
-          (nil? status-label)
-          (str "エラー: ステータスは [ " todo/msg-update-statuses " ] で指定してください。")
-
-          (not (pos? status-num))
-          (str "エラー: ステータスは [ " todo/msg-update-statuses " ] で指定してください。")
-
-          :else
-          (let [todos    (:todos data)
-                found?   (some #(= (:id %) id) todos)
-                new-data (todo/update-status data id status-num)]
-            (if found?
-              (do
-                ;; 更新
-                (reset! data-atom new-data)
-                (store/save-todos! new-data)
-                (format "タスク %d を「%s」にしました。" id status-label))
-              (format "エラー: ID %d のタスクが見つかりません。" id)))))
-
-      "delete"
-      (let [id (some-> (first rest-args) parse-id)]
-        (if (nil? id)
-          "エラー: 有効な ID を指定してください。"
-          (let [todos    (:todos data)
-                found?   (some #(= (:id %) id) todos)
-                new-data (todo/delete-todo data id)]
-            (if found?
-              (do
-                ;; 更新
-                (reset! data-atom new-data)
-                (store/save-todos! new-data)
-                (format "タスク %d を削除しました。" id))
-              (format "エラー: ID %d のタスクが見つかりません。" id)))))
-
-      (format-help))))
+  (-> (validate-input data-atom cmd rest-args)
+      execute-command!
+      format-result
+      println))
 
 
 (defn -main
@@ -140,10 +186,10 @@
                   (if (contains? #{"exit" "quit"} cmd)
                     (do (println "さようなら。")
                         (System/exit 0))
-                    (println (run-command data-atom cmd rest-args)))))
+                    (run-command data-atom cmd rest-args))))
               (recur)))))
 
       ;; mode: simple
       (let [cmd      (first args)
             rest-args (rest args)]
-        (println (run-command data-atom cmd rest-args))))))
+        (run-command data-atom cmd rest-args)))))
