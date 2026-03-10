@@ -3,6 +3,7 @@
   (:require
     [clojure.string :as str]
     [todo-app.gui :as gui]
+    [todo-app.server :as server]
     [todo-app.status :as status]
     [todo-app.store :as store]
     [todo-app.todo :as todo]))
@@ -209,13 +210,19 @@
   (gui/run data-atom fnc))
 
 
+(defn run-rest
+  [data-atom fnc]
+  (println "rest API")
+  (server/run data-atom fnc))
+
+
 (defn help
   []
   (println
     (str/join "\n"
               [""
                "TODO Mode - 使い方:"
-               "  0:Simple CUI / 1:Repl CUI / 2:GUI"
+               "  0:Simple CUI / 1:Repl CUI / 2:GUI / 3:REST"
                ""])))
 
 
@@ -229,4 +236,5 @@
       0 (cui-simple! data-atom args)
       1 (cui-repl! data-atom)
       2 (gui! data-atom now)
+      3 (run-rest data-atom now)
       (help))))
