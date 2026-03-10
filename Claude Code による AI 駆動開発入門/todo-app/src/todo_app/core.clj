@@ -182,7 +182,6 @@
   [data-atom args]
   (let [cmd      (first args)
         rest-args (rest args)]
-    ;; (println "simple")
     (run-command data-atom cmd rest-args (now))))
 
 
@@ -207,7 +206,6 @@
 
 (defn gui!
   [data-atom fnc]
-  ;; (println "gui")
   (gui/run data-atom fnc))
 
 

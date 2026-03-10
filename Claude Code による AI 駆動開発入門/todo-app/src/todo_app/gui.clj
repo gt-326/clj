@@ -166,6 +166,25 @@
                   (let [status-label (s/selection filter-combo)
                         ;; {:todo "未着手" :doing "進行中" :pending "保留" :done "完了"}
                         status-key (label->key status/label-by-key status-label)]
+                    ;; 画面
                     (do-refresh @app-state status-key))))
+
+
+      ;; 初期状態: 未選択なので無効化
+      (s/config! [status-combo update-btn delete-btn] :enabled? false)
+
+      ;; 選択状態の変化を監視
+      (-> todo-table
+          .getSelectionModel
+          (.addListSelectionListener
+            (reify javax.swing.event.ListSelectionListener
+              (valueChanged
+                [_ e]
+                ;; getValueIsAdjusting が true の間はドラッグ中の中間イベント
+                ;; false になった確定時だけ処理する
+                (when-not (.getValueIsAdjusting e)
+                  (let [selected? (>= (.getSelectedRow todo-table) 0)]
+                    (s/config! [status-combo update-btn delete-btn]
+                               :enabled? selected?)))))))
 
       (s/show! frame))))
