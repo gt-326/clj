@@ -2,6 +2,7 @@
   (:gen-class)
   (:require
     [clojure.string :as str]
+    [todo-app.gui :as gui]
     [todo-app.status :as status]
     [todo-app.store :as store]
     [todo-app.todo :as todo]))
@@ -34,7 +35,7 @@
     "update"
     (let [id           (some-> (first rest-args) parse-id)
           status-num   (some-> (second rest-args) parse-id)
-          status-label (status/valid-statuses status-num)]
+          status-label (status/label-by-num status-num)]
       (cond
         (nil? id)
         {:error "エラー: 有効な ID を指定してください。"}
@@ -123,7 +124,7 @@
                      (format "[%s] %3d. %s [%s  %s]"
                              (if (= status :todo)
                                "　"
-                               (subs (status/status-labels status) 0 1))
+                               (subs (status/label-by-key status) 0 1))
                              id
                              title
                              (if start-at (str "開始:" start-at) "")
@@ -177,32 +178,57 @@
            (java.time.format.DateTimeFormatter/ofPattern "yy-MM-dd HH:mm")))
 
 
+(defn cui-simple!
+  [data-atom args]
+  (let [cmd      (first args)
+        rest-args (rest args)]
+    ;; (println "simple")
+    (run-command data-atom cmd rest-args (now))))
+
+
+(defn cui-repl!
+  [data-atom]
+  (println "TODO App へようこそ。help でコマンド一覧を表示します。")
+  (loop []
+    (print "todo> ")
+    (flush)
+    (let [line (read-line)]
+      (when (some? line) ; Ctrl+D (EOF) で終了
+        (let [tokens    (str/split (str/trim line) #"\s+")
+              cmd       (first tokens)
+              rest-args (rest tokens)]
+          (when-not (str/blank? line)
+            (if (contains? #{"exit" "quit"} cmd)
+              (do (println "さようなら。")
+                  (System/exit 0))
+              (run-command data-atom cmd rest-args (now)))))
+        (recur)))))
+
+
+(defn gui!
+  [data-atom fnc]
+  ;; (println "gui")
+  (gui/run data-atom fnc))
+
+
+(defn help
+  []
+  (println
+    (str/join "\n"
+              [""
+               "TODO Mode - 使い方:"
+               "  0:Simple CUI / 1:Repl CUI / 2:GUI"
+               ""])))
+
+
 (defn -main
-  [& args]
+  [mode & args]
   ;; ファイルの存在チェック（なければ生成する）
   (store/initialize-store!)
   ;; 起動時に初期化・1回だけ読み込む
   (let [data-atom (atom (store/load-todos))]
-    (if (empty? args)
-      ;; mode: repl
-      (do
-        (println "TODO App へようこそ。help でコマンド一覧を表示します。")
-        (loop []
-          (print "todo> ")
-          (flush)
-          (let [line (read-line)]
-            (when (some? line) ; Ctrl+D (EOF) で終了
-              (let [tokens    (str/split (str/trim line) #"\s+")
-                    cmd       (first tokens)
-                    rest-args (rest tokens)]
-                (when-not (str/blank? line)
-                  (if (contains? #{"exit" "quit"} cmd)
-                    (do (println "さようなら。")
-                        (System/exit 0))
-                    (run-command data-atom cmd rest-args (now)))))
-              (recur)))))
-
-      ;; mode: simple
-      (let [cmd      (first args)
-            rest-args (rest args)]
-        (run-command data-atom cmd rest-args (now))))))
+    (case (some-> mode parse-id)
+      0 (cui-simple! data-atom args)
+      1 (cui-repl! data-atom)
+      2 (gui! data-atom now)
+      (help))))

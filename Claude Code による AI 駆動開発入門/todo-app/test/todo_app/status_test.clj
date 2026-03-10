@@ -14,18 +14,18 @@
     (is (= ["未着手" "進行中" "保留" "完了"] status/stat-vals))))
 
 
-(deftest status-labels-test
-  (testing "status-labels はキーワード→表示名のマップ"
+(deftest label-by-key-test
+  (testing "label-by-key はキーワード→表示名のマップ"
     (is (= {:todo "未着手" :doing "進行中" :pending "保留" :done "完了"}
-           status/status-labels))))
+           status/label-by-key))))
 
 
-(deftest valid-statuses-test
-  (testing "valid-statuses は番号→表示名のソート済みマップ"
+(deftest label-by-num-test
+  (testing "label-by-num は番号→表示名のソート済みマップ"
     (is (= {0 "未着手" 1 "進行中" 2 "保留" 3 "完了"}
-           status/valid-statuses)))
+           status/label-by-num)))
   (testing "sorted-map なのでキーが昇順"
-    (is (= [0 1 2 3] (keys status/valid-statuses)))))
+    (is (= [0 1 2 3] (keys status/label-by-num)))))
 
 
 (deftest msg-statuses-test
