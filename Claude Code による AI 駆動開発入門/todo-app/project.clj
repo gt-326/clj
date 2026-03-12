@@ -12,8 +12,8 @@
                  [cheshire                "5.12.0"]   ; JSON 変換
                  ]
 
-  :source-paths ["src"]
-  :test-paths   ["test"]
+  :source-paths ["src/clj"]
+  :test-paths   ["test/clj"]
 
   :main todo-app.core
   :aot [todo-app.core]
