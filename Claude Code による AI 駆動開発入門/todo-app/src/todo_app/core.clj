@@ -4,6 +4,7 @@
     [clojure.string :as str]
     [todo-app.cui :as cui]
     [todo-app.gui :as gui]
+    [todo-app.server :as server]
     [todo-app.store :as store]
     [todo-app.util :as util]))
 
@@ -14,7 +15,7 @@
     (str/join "\n"
               [""
                "TODO Mode - 使い方:"
-               "  0:Simple CUI / 1:Repl CUI / 2:GUI"
+               "  0:Simple CUI / 1:Repl CUI / 2:GUI / 3:REST"
                ""])))
 
 
@@ -28,4 +29,5 @@
       0 (cui/cui-simple! data-atom args)
       1 (cui/cui-repl! data-atom)
       2 (gui/run data-atom)
+      3 (server/run data-atom)
       (help))))
