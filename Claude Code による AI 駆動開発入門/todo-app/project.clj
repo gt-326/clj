@@ -1,5 +1,5 @@
 (defproject todo-app "1.0.0"
-  :description "A simple standalone CUI TODO app"
+  :description "A simple standalone TODO app [ CUI / GUI ]"
   :url "https://example.com"
   :license {:name "MIT"}
   :dependencies [[org.clojure/clojure "1.11.1"]

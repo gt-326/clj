@@ -38,3 +38,25 @@
   (testing "update で指定可能なステータス（未着手=0 を除く）"
     (is (= "1:進行中 / 2:保留 / 3:完了"
            status/msg-update-statuses))))
+
+
+(deftest get-key-by-label-test
+  (testing "表示名からキーワードを返す"
+    (is (= :todo    (status/get-key-by-label "未着手")))
+    (is (= :doing   (status/get-key-by-label "進行中")))
+    (is (= :pending (status/get-key-by-label "保留")))
+    (is (= :done    (status/get-key-by-label "完了"))))
+  (testing "存在しない表示名は nil を返す"
+    (is (nil? (status/get-key-by-label "不明")))
+    (is (nil? (status/get-key-by-label "")))))
+
+
+(deftest get-num-by-label-test
+  (testing "表示名から番号を返す"
+    (is (= 0 (status/get-num-by-label "未着手")))
+    (is (= 1 (status/get-num-by-label "進行中")))
+    (is (= 2 (status/get-num-by-label "保留")))
+    (is (= 3 (status/get-num-by-label "完了"))))
+  (testing "存在しない表示名は nil を返す"
+    (is (nil? (status/get-num-by-label "不明")))
+    (is (nil? (status/get-num-by-label "")))))
