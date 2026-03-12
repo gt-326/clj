@@ -29,3 +29,22 @@
 
 ;; msg-update-statuses: "1:進行中 / 2:保留 / 3:完了"
 (def msg-update-statuses (gen-msg (rest label-by-num)))
+
+
+(defn- label->key
+  [status-map-data selected-label]
+  (let [status-pair (->> status-map-data
+                         (filter (fn [[_ v]] (= v selected-label))))]
+    (if (empty? status-pair)
+      nil
+      (key (first status-pair)))))
+
+
+(defn get-key-by-label
+  [label]
+  (label->key label-by-key label))
+
+
+(defn get-num-by-label
+  [label]
+  (label->key label-by-num label))

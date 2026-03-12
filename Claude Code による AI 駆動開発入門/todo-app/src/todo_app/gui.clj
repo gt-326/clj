@@ -5,7 +5,8 @@
     [seesaw.table :as st]
     [todo-app.status :as status]
     [todo-app.store :as store]
-    [todo-app.todo :as todo]))
+    [todo-app.todo :as todo]
+    [todo-app.util :as util]))
 
 
 (def table-columns
@@ -29,10 +30,7 @@
 (defn refresh-table!
   [data table status-key]
   (let [todos    (:todos data)
-        filtered (if status-key
-                   (filterv #(= (:status %) status-key) todos)
-                   ;; 全て
-                   todos)]
+        filtered (util/select-data :status status-key todos)]
     (st/clear! table)
     (doseq [row (map todo->row filtered)]
       (st/insert-at! table (st/row-count table) row))))
@@ -45,17 +43,8 @@
       (:id (st/value-at table row)))))
 
 
-(defn- label->key
-  [status-map-data selected-label]
-  (let [status-pair (->> status-map-data
-                         (filter (fn [[_ v]] (= v selected-label))))]
-    (if (empty? status-pair)
-      nil
-      (key (first status-pair)))))
-
-
 (defn run
-  [app-state fnc-now]
+  [app-state]
   (s/native!)
 
   (let [;; 入力エリア
@@ -113,8 +102,7 @@
                     (when-not (str/blank? title)
                       (let [new-data (todo/add-todo @app-state title)
                             status-label (s/selection filter-combo)
-                            ;; {:todo "未着手" :doing "進行中" :pending "保留" :done "完了"}
-                            status-key (label->key status/label-by-key status-label)]
+                            status-key (status/get-key-by-label status-label)]
                         ;; ファイルへ書き込み
                         (store/save-todos! new-data)
                         ;; atom 更新
@@ -128,16 +116,14 @@
                 (fn [_]
                   (when-let [id (selected-id todo-table)]
                     (let [new-status (s/selection status-combo)
-                          ;; {0 "未着手", 1 "進行中", 2 "保留", 3 "完了"}
-                          stat-num (label->key status/label-by-num new-status)
+                          stat-num (status/get-num-by-label new-status)
                           new-data (todo/update-status
                                      @app-state
                                      id
                                      stat-num
-                                     (fnc-now))
+                                     (util/now))
                           status-label (s/selection filter-combo)
-                          status-key (label->key status/label-by-key status-label)]
-
+                          status-key (status/get-key-by-label status-label)]
                       ;; ファイルへ書き込み
                       (store/save-todos! new-data)
                       ;; atom 更新
@@ -151,8 +137,7 @@
                   (when-let [id (selected-id todo-table)]
                     (let [new-data (todo/delete-todo @app-state id)
                           status-label (s/selection filter-combo)
-                          ;; {:todo "未着手" :doing "進行中" :pending "保留" :done "完了"}
-                          status-key (label->key status/label-by-key status-label)]
+                          status-key (status/get-key-by-label status-label)]
                       ;; ファイルへ書き込み
                       (store/save-todos! new-data)
                       ;; atom 更新
@@ -164,8 +149,7 @@
       (s/listen filter-combo :action
                 (fn [_]
                   (let [status-label (s/selection filter-combo)
-                        ;; {:todo "未着手" :doing "進行中" :pending "保留" :done "完了"}
-                        status-key (label->key status/label-by-key status-label)]
+                        status-key (status/get-key-by-label status-label)]
                     ;; 画面
                     (do-refresh @app-state status-key))))
 

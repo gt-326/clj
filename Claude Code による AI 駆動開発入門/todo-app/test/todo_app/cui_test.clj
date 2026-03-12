@@ -1,8 +1,8 @@
-(ns todo-app.core-test
+(ns todo-app.cui-test
   (:require
     [clojure.string :as str]
     [clojure.test :refer [deftest is testing]]
-    [todo-app.core :as core]
+    [todo-app.cui :as core]
     [todo-app.store :as store]))
 
 
@@ -13,18 +13,6 @@
   ([]      (atom empty-data))
   ([data]  (atom data)))
 
-
-;;; parse-id
-
-(deftest parse-id-test
-  (testing "有効な整数文字列"
-    (is (= 0  (core/parse-id "0")))
-    (is (= 1  (core/parse-id "1")))
-    (is (= 42 (core/parse-id "42"))))
-  (testing "無効な文字列は nil"
-    (is (nil? (core/parse-id "abc")))
-    (is (nil? (core/parse-id "")))
-    (is (nil? (core/parse-id "1.5")))))
 
 
 ;;; parse-command: add
