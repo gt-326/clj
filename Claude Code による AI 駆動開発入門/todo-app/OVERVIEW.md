@@ -2,8 +2,7 @@
 
 ## 概要
 
-Clojure 製のスタンドアロン CUI（コマンドライン）TODO アプリ。
-引数なしで起動すると対話型 REPL モード、引数ありで起動するとシンプルモード（1コマンド実行）で動作する。
+Clojure 製のスタンドアロン TODO アプリ。起動時の引数でモードを選択し、CUI・GUI・REST サーバーの3種類のインターフェースで動作する。REST モード時はブラウザから操作できる ClojureScript 製 Web フロントエンドも提供する。
 
 ---
 
@@ -17,30 +16,56 @@ Clojure 製のスタンドアロン CUI（コマンドライン）TODO アプリ
 | エントリポイント | `todo-app.core/-main` |
 | ライセンス | MIT |
 
+### 依存ライブラリ
+
+| ライブラリ | バージョン | 用途 |
+|-----------|-----------|------|
+| seesaw | 1.5.0 | GUI（Swing ラッパー） |
+| ring/ring-core | 1.11.0 | HTTP サーバー基盤 |
+| ring/ring-jetty-adapter | 1.11.0 | 組み込み Jetty |
+| compojure | 1.7.1 | ルーティング |
+| ring/ring-json | 0.5.1 | JSON ミドルウェア |
+| cheshire | 5.12.0 | JSON 変換 |
+| ring/ring-mock | 0.4.0（dev） | HTTP テスト用モックリクエスト |
+
 ---
 
 ## ファイル構成
 
-### ソース
+### Clojure ソース（`src/clj/todo_app/`）
 
 | ファイル | 名前空間 | 責務 |
 |----------|----------|------|
-| `src/todo_app/status.clj` | `todo-app.status` | ステータス定数・メッセージ生成 |
-| `src/todo_app/todo.clj` | `todo-app.todo` | ドメインロジック（純粋関数のみ） |
-| `src/todo_app/store.clj` | `todo-app.store` | 永続化（ファイル読み書き・初期化） |
-| `src/todo_app/core.clj` | `todo-app.core` | UI・エントリポイント（コマンド解釈・表示） |
+| `status.clj` | `todo-app.status` | ステータス定数・メッセージ生成 |
+| `todo.clj` | `todo-app.todo` | ドメインロジック（純粋関数のみ） |
+| `store.clj` | `todo-app.store` | 永続化（EDN ファイル読み書き・初期化） |
+| `util.clj` | `todo-app.util` | 共通ユーティリティ（parse-num / now / select-data） |
+| `cui.clj` | `todo-app.cui` | CUI インターフェース（コマンド解釈・表示） |
+| `gui.clj` | `todo-app.gui` | GUI インターフェース（Seesaw） |
+| `server.clj` | `todo-app.server` | REST サーバー（Ring / Compojure） |
+| `core.clj` | `todo-app.core` | エントリポイント（モード振り分けのみ） |
 
-### テスト
+### 静的リソース（`resources/public/`）
+
+| ファイル | 用途 |
+|----------|------|
+| `index.html` | Web アプリのエントリ HTML |
+| `style.css` | スタイルシート |
+| `js/main.js` | Web フロントエンド JS |
+
+### テスト（`test/clj/todo_app/`）
 
 | ファイル | テスト対象 |
 |----------|------------|
-| `test/todo_app/status_test.clj` | ステータス定数の値 |
-| `test/todo_app/todo_test.clj` | `add-todo` / `update-status` / `delete-todo` |
-| `test/todo_app/core_test.clj` | `parse-id` / `parse-command` / `format-*` / `execute-command!` |
-| `test/todo_app/store_test.clj` | `initialize-store!` / `load-todos` / `save-todos!` |
+| `status_test.clj` | ステータス定数・`get-key-by-label` / `get-num-by-label` |
+| `todo_test.clj` | `add-todo` / `update-status` / `delete-todo` |
+| `store_test.clj` | `initialize-store!` / `load-todos` / `save-todos!` |
+| `util_test.clj` | `parse-num` / `now` / `select-data` |
+| `cui_test.clj` | `parse-command` / `format-*` / `execute-command!` |
+| `server_test.clj` | REST エンドポイント（全ルート・各ステータスコード） |
 
 ```bash
-lein test   # 全テスト実行
+lein test   # 全テスト実行（68 tests / 142 assertions）
 ```
 
 ---
@@ -54,21 +79,22 @@ lein repl
 ```
 
 ```clojure
-(-main)                        ;; 引数なし → REPL モード（対話ループ）
-(-main "add" "買い物をする")   ;; シンプルモード（1コマンド実行）
-(-main "list")
-(-main "update" "1" "3")
-(-main "delete" "2")
+(-main "1")   ;; Repl CUI モード
+(-main "2")   ;; GUI モード
+(-main "3")   ;; REST サーバーモード
+(-main "0" "add" "買い物をする")   ;; Simple CUI モード
 ```
 
 ### 2. `lein run` で直接実行する
 
 ```bash
-lein run                        # REPL モード
-lein run add 買い物をする        # シンプルモード
-lein run list
-lein run update 1 3
-lein run delete 2
+lein run 1              # Repl CUI モード（対話ループ）
+lein run 2              # GUI モード
+lein run 3              # REST サーバーモード（http://localhost:3000）
+lein run 0 add 買い物をする   # Simple CUI モード
+lein run 0 list
+lein run 0 update 1 3
+lein run 0 delete 2
 ```
 
 ### 3. uberjar をビルドして実行する
@@ -78,33 +104,30 @@ lein run delete 2
 lein uberjar
 
 # 実行
-java -jar target/uberjar/todo-app-1.0.0-standalone.jar          # REPL モード
-java -jar target/uberjar/todo-app-1.0.0-standalone.jar add 買い物をする
-java -jar target/uberjar/todo-app-1.0.0-standalone.jar list
+java -jar target/uberjar/todo-app-1.0.0-standalone.jar 1
+java -jar target/uberjar/todo-app-1.0.0-standalone.jar 3
 ```
 
 ### 起動方法による違い
 
 | 方法 | 用途 | 特徴 |
 |------|------|------|
-| REPL | 開発・動作確認 | 関数を直接呼べる。状態を保ちながら繰り返し試せる |
-| `lein run` | 開発・簡易実行 | ソースから直接実行。Leiningen が必要 |
-| uberjar | 配布・本番利用 | Leiningen 不要。JRE があればどこでも動く |
+| REPL | 開発・動作確認 | 関数を直接呼べる |
+| `lein run` | 開発・簡易実行 | Leiningen が必要 |
+| uberjar | 配布・本番利用 | JRE があればどこでも動く |
 
 ---
 
 ## `-main` の動作モード
 
 ```
-引数なし → REPL モード（対話ループ）
-  - プロンプト "todo> " を表示し入力を待つ
-  - exit / quit または Ctrl+D で終了
-
-引数あり → シンプルモード（1コマンド実行して終了）
-  - 第1引数をコマンド、第2引数以降をオプションとして処理
+0: Simple CUI  引数としてコマンドを受け取り1回実行して終了
+1: Repl CUI    プロンプト "todo> " を表示し対話ループ。exit / quit または Ctrl+D で終了
+2: GUI         Seesaw（Swing）ウィンドウを表示
+3: REST        Jetty を起動（http://localhost:3000）。ブラウザから操作可能
 ```
 
-### コマンド処理のパイプライン
+### CUI コマンド処理のパイプライン
 
 `run-command` は以下の3段階で処理する：
 
@@ -118,7 +141,26 @@ format-result    結果の文字列化（表示用フォーマット）
 println          出力
 ```
 
-`parse-command` は純粋関数。`validate-input` はそのラッパーで `:data-atom` を付加する。
+---
+
+## REST API 仕様
+
+ベース URL: `http://localhost:3000`
+
+| メソッド | パス | 説明 | 成功時 | エラー時 |
+|---------|------|------|--------|---------|
+| `GET` | `/todos` | 全件取得（`?status=N` でフィルタ可） | 200 | — |
+| `GET` | `/todos/:id` | 1件取得 | 200 | 404 |
+| `POST` | `/todos` | タスク追加（body: `{"title": "..."}` ） | 201 | 400 |
+| `PATCH` | `/todos/:id` | ステータス更新（body: `{"status": N}` ） | 200 | 400 / 404 |
+| `DELETE` | `/todos/:id` | タスク削除 | 204 | 404 |
+| `GET` | `/` | `index.html` を返す | 200 | — |
+
+### PATCH のバリデーション
+
+- `status` が存在しないキー → 400
+- `status = 0`（未着手）への変更 → 400
+- 指定 ID が存在しない → 404
 
 ---
 
@@ -166,6 +208,8 @@ JAR 実行時はリソース URL のプロトコルが `jar:` かどうかで判
 
 ## 機能要件
 
+### CUI コマンド
+
 | コマンド | 引数 | 動作 |
 |----------|------|------|
 | `add <タスク名>` | タスク名（スペース区切り可） | タスクを追加する（初期ステータス: 未着手） |
@@ -184,7 +228,7 @@ JAR 実行時はリソース URL のプロトコルが `jar:` かどうかで判
 | 2 | `:pending` | 保留 | 可 | 可 |
 | 3 | `:done` | 完了 | 可 | 可 |
 
-> **注意**: `update` コマンドで `:todo`（0: 未着手）への変更は不可。
+> **注意**: `update` コマンドおよび REST PATCH で `:todo`（0: 未着手）への変更は不可。
 
 ### ステータス遷移による日時の自動設定
 
@@ -196,7 +240,7 @@ JAR 実行時はリソース URL のプロトコルが `jar:` かどうかで判
 
 ---
 
-## 表示仕様
+## CUI 表示仕様
 
 ```
 [　]   1. 未着手のタスク [  ]
@@ -217,7 +261,7 @@ JAR 実行時はリソース URL のプロトコルが `jar:` かどうかで判
 | `add` でタスク名が空 | エラーメッセージ表示 |
 | `update` / `delete` で ID が数値でない | エラーメッセージ表示 |
 | `update` で無効なステータス番号（0 または範囲外） | エラーメッセージ表示 |
-| 指定 ID のタスクが存在しない | エラーメッセージ表示 |
+| 指定 ID のタスクが存在しない | エラーメッセージ表示（CUI・REST 共通） |
 | EDN ファイルが壊れている | 初期データ `{:next-id 1 :todos []}` で代替 |
 
 ---
@@ -227,7 +271,9 @@ JAR 実行時はリソース URL のプロトコルが `jar:` かどうかで判
 - **アトムキャッシュ**: 起動時に1回だけ `load-todos` し、以降はメモリ上のアトムを参照
 - **書き込みは都度**: 各コマンド実行後に即時 EDN ファイルへ保存（異常終了時のデータ保護）
 - **保存 → アトム更新の順**: 保存失敗時にアトムが汚染されない
-- **`todo.clj` は純粋関数のみ**: 副作用（現在時刻取得・ファイル操作）は `core.clj` / `store.clj` に分離
-- **`datetime` の依存性注入**: `now` は `-main` の入口で1回だけ呼び出し、文字列として `run-command` → `parse-command` と流す。テスト時は固定文字列を渡せる
+- **`todo.clj` は純粋関数のみ**: 副作用（現在時刻取得・ファイル操作）は `cui.clj` / `store.clj` に分離
+- **`datetime` の依存性注入**: `now` は入口で1回だけ呼び出し、文字列として流す。テスト時は固定文字列を渡せる
 - **`parse-command` は純粋関数**: `validate-input` のラッパーとして分離することで、`data-atom` なしに単体テスト可能
-- **ベクターアクセスに `get` を使用**: `(get stat-keys n)` は範囲外・nil で例外を投げず `nil` を返す（`parse-command` / `update-status`）
+- **`make-handler [app-state]` クロージャ**: REST サーバーのハンドラにアトムをクロージャで渡すことでグローバル状態を排除し、テスト時に独立した状態を注入可能
+- **`util/select-data` による共通フィルタ**: CUI / GUI / REST の3箇所で使われるフィルタ処理を1関数に集約
+- **ベクターアクセスに `get` を使用**: `(get stat-keys n)` は範囲外・nil で例外を投げず `nil` を返す

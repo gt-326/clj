@@ -6,7 +6,7 @@
     [ring.adapter.jetty :as jetty]
     [ring.middleware.json :refer [wrap-json-body wrap-json-response]]
     [ring.middleware.params :refer [wrap-params]]
-    ;;    [ring.util.response :as resp]
+    [ring.util.response :as resp]
     [todo-app.status :as status]
     [todo-app.store  :as store]
     [todo-app.todo   :as todo]
@@ -84,10 +84,10 @@
 
 
         ;; server.clj の routes に追加
-        ;; (GET "/" [] (resp/resource-response "public/index.html" {:root ""}))
+        (GET "/" [] (resp/resource-response "public/index.html" {:root ""}))
 
         ;; 静的ファイル（JS/CSS）を classpath から配信
-        ;; (route/resources "/")
+        (route/resources "/")
 
         (route/not-found {:status 404 :body {:error "not found"}}))
 
