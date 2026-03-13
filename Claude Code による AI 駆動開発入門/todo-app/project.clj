@@ -10,7 +10,20 @@
                  [compojure               "1.7.1"]    ; ルーティング
                  [ring/ring-json          "0.5.1"]    ; JSON ミドルウェア
                  [cheshire                "5.12.0"]   ; JSON 変換
-                 ]
+
+                 [org.clojure/clojurescript "1.11.60"]]
+
+  :plugins [[lein-cljsbuild "1.1.8"]]
+
+  :cljsbuild
+  {:builds [{:id "dev"
+             :source-paths ["src/cljs"]
+             :compiler {:output-to     "resources/public/js/main.js"
+                        :optimizations :simple}}
+            {:id "release"
+             :source-paths ["src/cljs"]
+             :compiler {:output-to "resources/public/js/main.js"
+                        :optimizations :advanced}}]}
 
   :source-paths ["src/clj"]
   :test-paths   ["test/clj"]
