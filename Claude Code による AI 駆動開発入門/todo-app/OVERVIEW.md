@@ -27,6 +27,13 @@ Clojure 製のスタンドアロン TODO アプリ。起動時の引数でモー
 | ring/ring-json | 0.5.1 | JSON ミドルウェア |
 | cheshire | 5.12.0 | JSON 変換 |
 | ring/ring-mock | 0.4.0（dev） | HTTP テスト用モックリクエスト |
+| lein-cljsbuild | 1.1.8（dev plugin） | ClojureScript ビルド |
+| org.clojure/clojurescript | 1.11.60（dev） | ClojureScript コンパイラ |
+| reagent | 1.2.0（dev） | ClojureScript 向け React ラッパー |
+| cljsjs/react | 17.0.2-0（dev） | React 本体（Reagent 1.x で必須） |
+| cljsjs/react-dom | 17.0.2-0（dev） | React DOM（Reagent 1.x で必須） |
+
+> **注意**: `dev` 印のライブラリは `:dev` プロファイル専用。uberjar には含まれない。
 
 ---
 
@@ -45,13 +52,22 @@ Clojure 製のスタンドアロン TODO アプリ。起動時の引数でモー
 | `server.clj` | `todo-app.server` | REST サーバー（Ring / Compojure） |
 | `core.clj` | `todo-app.core` | エントリポイント（モード振り分けのみ） |
 
+### ClojureScript ソース
+
+| ファイル | 用途 |
+|----------|------|
+| `src/cljs/vanilla/todo_app/core.cljs` | vanilla 版 Web フロントエンド（素の ClojureScript） |
+| `src/cljs/reagent/todo_app/core.cljs` | Reagent 版 Web フロントエンド（React ラッパー） |
+
 ### 静的リソース（`resources/public/`）
 
 | ファイル | 用途 |
 |----------|------|
-| `index.html` | Web アプリのエントリ HTML |
-| `style.css` | スタイルシート |
-| `js/main.js` | Web フロントエンド JS |
+| `index.html` | vanilla 版エントリ HTML（`/js/vanilla/main.js` を読み込む） |
+| `reagent/index.html` | Reagent 版エントリ HTML（`/js/reagent/main.js` を読み込む） |
+| `style.css` | スタイルシート（両版共用） |
+| `js/vanilla/main.js` | vanilla 版コンパイル済み JS |
+| `js/reagent/main.js` | Reagent 版コンパイル済み JS |
 
 ### テスト（`test/clj/todo_app/`）
 
@@ -100,12 +116,28 @@ lein run 0 delete 2
 ### 3. uberjar をビルドして実行する
 
 ```bash
-# ビルド
+# JS を先にビルド（uberjar に同梱するため）
+lein cljsbuild once vanilla-release
+lein cljsbuild once reagent-release
+
+# uberjar ビルド
 lein uberjar
 
 # 実行
 java -jar target/uberjar/todo-app-1.0.0-standalone.jar 1
 java -jar target/uberjar/todo-app-1.0.0-standalone.jar 3
+```
+
+### 4. ClojureScript をビルドする
+
+```bash
+# 開発ビルド（:simple 最適化・デバッグしやすい）
+lein cljsbuild once vanilla-dev
+lein cljsbuild once reagent-dev
+
+# 本番ビルド（:advanced 最適化・ファイルサイズ最小）
+lein cljsbuild once vanilla-release
+lein cljsbuild once reagent-release
 ```
 
 ### 起動方法による違い
@@ -154,7 +186,9 @@ println          出力
 | `POST` | `/todos` | タスク追加（body: `{"title": "..."}` ） | 201 | 400 |
 | `PATCH` | `/todos/:id` | ステータス更新（body: `{"status": N}` ） | 200 | 400 / 404 |
 | `DELETE` | `/todos/:id` | タスク削除 | 204 | 404 |
-| `GET` | `/` | `index.html` を返す | 200 | — |
+| `GET` | `/` | vanilla 版 `index.html` を返す | 200 | — |
+| `GET` | `/vanilla` | vanilla 版 `index.html` を返す | 200 | — |
+| `GET` | `/reagent` | Reagent 版 `reagent/index.html` を返す | 200 | — |
 
 ### PATCH のバリデーション
 
@@ -277,3 +311,5 @@ JAR 実行時はリソース URL のプロトコルが `jar:` かどうかで判
 - **`make-handler [app-state]` クロージャ**: REST サーバーのハンドラにアトムをクロージャで渡すことでグローバル状態を排除し、テスト時に独立した状態を注入可能
 - **`util/select-data` による共通フィルタ**: CUI / GUI / REST の3箇所で使われるフィルタ処理を1関数に集約
 - **ベクターアクセスに `get` を使用**: `(get stat-keys n)` は範囲外・nil で例外を投げず `nil` を返す
+- **ClojureScript を `:dev` プロファイルに分離**: ClojureScript の依存する `instaparse` が Java 21 の `java.util.SequencedCollection` を参照するため、Java 17 で uberjar を動かすには `:dev` プロファイルへの分離が必要
+- **Reagent 版と vanilla 版を URL で切り分け**: `/vanilla`（素の ClojureScript）と `/reagent`（Reagent）で別フロントエンドを提供。REST API は共用
