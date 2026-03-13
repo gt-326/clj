@@ -12,13 +12,21 @@
                  [cheshire                "5.12.0"]]  ; JSON 変換
 
   :cljsbuild
-  {:builds [{:id "dev"
-             :source-paths ["src/cljs"]
-             :compiler {:output-to     "resources/public/js/main.js"
+  {:builds [{:id "vanilla-dev"
+             :source-paths ["src/cljs/vanilla"]
+             :compiler {:output-to     "resources/public/js/vanilla/main.js"
                         :optimizations :simple}}
-            {:id "release"
-             :source-paths ["src/cljs"]
-             :compiler {:output-to "resources/public/js/main.js"
+            {:id "vanilla-release"
+             :source-paths ["src/cljs/vanilla"]
+             :compiler {:output-to     "resources/public/js/vanilla/main.js"
+                        :optimizations :advanced}}
+            {:id "reagent-dev"
+             :source-paths ["src/cljs/reagent"]
+             :compiler {:output-to     "resources/public/js/reagent/main.js"
+                        :optimizations :simple}}
+            {:id "reagent-release"
+             :source-paths ["src/cljs/reagent"]
+             :compiler {:output-to     "resources/public/js/reagent/main.js"
                         :optimizations :advanced}}]}
 
   :source-paths ["src/clj"]
@@ -28,6 +36,13 @@
   :aot [todo-app.core]
   :profiles {:dev     {:plugins      [[lein-cljsbuild "1.1.8"]]
                        :dependencies [[org.clojure/clojurescript "1.11.60"]
+
+                                      ;; Reagent 1.x は React を自分では同梱しないため、
+                                      ;; cljsjs/react を明示的に追加する必要があります。
+                                      [reagent "1.2.0"]
+                                      [cljsjs/react "17.0.2-0"]
+                                      [cljsjs/react-dom "17.0.2-0"]
+
                                       [ring/ring-mock "0.4.0"]]}
              :uberjar {:aot :all
                        :jvm-opts ["-Dclojure.compiler.direct-linking=true"]}}

@@ -83,8 +83,9 @@
                       {:status 204}))))
 
 
-        ;; server.clj の routes に追加
-        (GET "/" [] (resp/resource-response "public/index.html" {:root ""}))
+        (GET "/"        [] (resp/resource-response "public/index.html"         {:root ""}))
+        (GET "/vanilla" [] (resp/resource-response "public/index.html"         {:root ""}))
+        (GET "/reagent" [] (resp/resource-response "public/reagent/index.html" {:root ""}))
 
         ;; 静的ファイル（JS/CSS）を classpath から配信
         (route/resources "/")
