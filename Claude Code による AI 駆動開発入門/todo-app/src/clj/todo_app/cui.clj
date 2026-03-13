@@ -162,15 +162,8 @@
       println))
 
 
-(defn cui-simple!
-  [data-atom args]
-  (let [cmd      (first args)
-        rest-args (rest args)]
-    (run-command data-atom cmd rest-args (util/now))))
-
-
 (defn cui-repl!
-  [data-atom]
+  [data-atom mode]
   (println "TODO App へようこそ。help でコマンド一覧を表示します。")
   (loop []
     (print "todo> ")
@@ -184,5 +177,7 @@
             (if (contains? #{"exit" "quit"} cmd)
               (do (println "さようなら。")
                   (System/exit 0))
-              (run-command data-atom cmd rest-args (util/now)))))
-        (recur)))))
+              (do (run-command data-atom cmd rest-args (util/now))
+                  (if (zero? mode)
+                    (println "さようなら。")
+                    (recur))))))))))
