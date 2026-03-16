@@ -99,6 +99,7 @@
 
 (defn run
   [data-atom]
-  (jetty/run-jetty
-    (make-handler data-atom)           ; ハンドラに渡す
-    {:port 3000 :join? true}))
+  (let [port (Integer/parseInt (or (System/getenv "PORT") "3000"))]
+    (jetty/run-jetty
+      (make-handler data-atom)
+      {:port port :join? true})))
