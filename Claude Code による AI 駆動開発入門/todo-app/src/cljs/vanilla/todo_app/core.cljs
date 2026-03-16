@@ -97,8 +97,13 @@
                        (fn []
                          (let [new-label (.-value sel)
                                stat-num  (get label->stat-num new-label)]
-                           (fetch! "PATCH" (str "/todos/" todo-id) {"status" stat-num}
-                                   (fn [_] (load-todos! (current-filter-num)))))))
+                           (if (zero? stat-num)
+                             (set! (.-value sel) current-label)
+                             (fetch!
+                               "PATCH"
+                               (str "/todos/" todo-id)
+                               {"status" stat-num}
+                               (fn [_] (load-todos! (current-filter-num))))))))
     sel))
 
 
@@ -111,8 +116,6 @@
         span3  (.createElement js/document "span")
         btn   (.createElement js/document "button")]
 
-    (println "aaa:" status)
-    ;; (set! (.-className li)   (str "todo-item status-" label))
     (set! (.-className li)   (str "todo-item status-" status))
 
     (set! (.-className span) "todo-title")

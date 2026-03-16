@@ -1,40 +1,48 @@
 (ns todo-app.core
   (:require
+    [clojure.string :as str]
     [reagent.core :as r]
-    [reagent.dom  :as rdom]
-    [clojure.string :as str]))
+    [reagent.dom  :as rdom]))
 
 
 ;; ─── 定数 ─────────────────────────────────────────────────────
 (def status-options ["未着手" "進行中" "保留" "完了"])
 (def filter-options (into ["全て"] status-options))
 
+
 (def key->label
   {"todo" "未着手" "doing" "進行中" "pending" "保留" "done" "完了"})
 
+
 (def label->filter-num
   {"未着手" 0 "進行中" 1 "保留" 2 "完了" 3})
+
 
 (def label->stat-num
   {"未着手" 0 "進行中" 1 "保留" 2 "完了" 3})
 
 
 ;; ─── 状態 ─────────────────────────────────────────────────────
-(def state (r/atom {:todos        []
-                    :error        nil
-                    :filter-label "全て"}))
+(def state
+  (r/atom {:todos        []
+           :error        nil
+           :filter-label "全て"}))
 
 
 ;; ─── エラー操作 ────────────────────────────────────────────────
-(defn show-error! [msg]
+(defn show-error!
+  [msg]
   (swap! state assoc :error msg))
 
-(defn clear-error! []
+
+(defn clear-error!
+  []
   (swap! state assoc :error nil))
 
 
 ;; ─── フィルタ ─────────────────────────────────────────────────
-(defn current-filter-num []
+(defn current-filter-num
+  []
   (get label->filter-num (:filter-label @state)))
 
 
@@ -69,20 +77,26 @@
 
 
 ;; ─── コンポーネント ───────────────────────────────────────────
-(defn status-select [todo-id current-label status]
+(defn status-select
+  [todo-id current-label status]
   [:select {:class     (str "status-select status-" status)
             :value     current-label
             :on-change (fn [e]
                          (let [new-label (.. e -target -value)
                                stat-num  (get label->stat-num new-label)]
-                           (fetch! "PATCH" (str "/todos/" todo-id) {"status" stat-num}
-                                   (fn [_] (load-todos! (current-filter-num))))))}
+                           (if (zero? stat-num)
+                             (set! (.. e -target -value) current-label)
+                             (fetch!
+                               "PATCH"
+                               (str "/todos/" todo-id) {"status" stat-num}
+                               (fn [_] (load-todos! (current-filter-num)))))))}
    (for [label status-options]
      ^{:key label}
      [:option {:value label} label])])
 
 
-(defn todo-item [{:keys [id title status start-at end-at]}]
+(defn todo-item
+  [{:keys [id title status start-at end-at]}]
   (let [label (get key->label status status)]
     [:li {:class (str "todo-item status-" status)}
      [:button {:class    "delete-btn"
@@ -98,7 +112,8 @@
        [:span {:class "todo-end"} (str "[ 終了：" end-at " ]")])]))
 
 
-(defn todo-list []
+(defn todo-list
+  []
   (let [todos (:todos @state)]
     [:ul {:class "todo-list"}
      (if (empty? todos)
@@ -108,7 +123,8 @@
          [todo-item todo]))]))
 
 
-(defn add-form []
+(defn add-form
+  []
   (let [title (r/atom "")]
     (fn []
       [:div {:class "todo-form"}
@@ -132,7 +148,8 @@
         "追加"]])))
 
 
-(defn filter-bar []
+(defn filter-bar
+  []
   [:div {:style {:text-align "right" :margin-bottom "8px"}}
    [:label "フィルタ: "
     [:select {:value     (:filter-label @state)
@@ -145,7 +162,8 @@
        [:option {:value label} label])]]])
 
 
-(defn app []
+(defn app
+  []
   [:div {:class "container"}
    [:h1 "TODO アプリ（Reagent）"]
    (when-let [err (:error @state)]
@@ -158,7 +176,8 @@
 
 
 ;; ─── 初期化 ──────────────────────────────────────────────────
-(defn init! []
+(defn init!
+  []
   (rdom/render [app] (.getElementById js/document "app"))
   (load-todos! nil))
 
