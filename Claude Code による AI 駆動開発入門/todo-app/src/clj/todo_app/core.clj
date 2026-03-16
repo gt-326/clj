@@ -20,14 +20,14 @@
 
 
 (defn -main
-  [mode]
+  [& mode]
   ;; ファイルの存在チェック（なければ生成する）
   (store/initialize-store!)
   ;; 起動時に初期化・1回だけ読み込む
-  (let [data-atom (atom (store/load-todos))]
-    (case (some-> mode util/parse-num)
-      0 (cui/cui-repl! data-atom 0)
-      1 (cui/cui-repl! data-atom 1)
-      2 (gui/run data-atom)
-      3 (server/run data-atom)
+  (let [data-atom (atom (store/load-todos))
+        mode-num (some-> mode first util/parse-num)]
+    (case mode-num
+      (0 1) (cui/cui-repl! data-atom mode-num)
+      2     (gui/run data-atom)
+      3     (server/run data-atom)
       (help))))
