@@ -1,4 +1,4 @@
-(ns onlisp.chap24.interpreter
+(ns onlisp.chap24.prolog.interpreter
   (:require
     [clojure.walk :as walk]
     [onlisp.common.util1 :as util1]

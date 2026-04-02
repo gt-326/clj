@@ -1,7 +1,7 @@
-(ns onlisp.chap24.interpreter-test
+(ns onlisp.chap24.prolog.interpreter-test
   (:require
     [clojure.test :refer [deftest is testing use-fixtures]]
-    [onlisp.chap24.interpreter :as interp]))
+    [onlisp.chap24.prolog.interpreter :as interp]))
 
 
 ;; with-inference は各マッチでボディを実行し、全解消費後に [end] を返す。
