@@ -147,7 +147,7 @@
        (reset! util3/*paths* nil)
        (util3/=bind
          [~gb]
-         ~(gen-query 'util3/*cont* rep-query {})
+         ~(gen-query 'onlisp.common.util3/*cont* rep-query {})
          (let [~@(mapcat
                    (fn [v] `[~v (fullbind2 ~v ~gb)])
                    user-vars)]               ; ユーザー変数だけ公開
