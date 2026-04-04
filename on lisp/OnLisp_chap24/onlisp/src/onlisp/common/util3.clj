@@ -19,8 +19,34 @@
 (def ^:dynamic *cont* identity)
 
 
-;; ここで *cont* を直接渡そうとすると、その書き換えがうまくいかない。
-;; 「引数 params の先頭に *cont* がくる」という前提を共有してもらうようにする。
+;; =bind だけが上記 *cont* を上書きする
+
+(defmacro =bind
+  [params expr & body]
+  `(binding
+     [*cont* (fn ~params ~@body)]
+     ~expr))
+
+
+(defmacro =fn
+  [params & body]
+  `(fn [~'cont_ ~@params]
+     ~@body))
+
+
+;; 引数の先頭（ローカルスコープ）：cont_
+;; ((fn [cont_ a b]
+;;    (list (* cont_ 10) a b)) 1 2 3)
+
+;; onlisp.core=> (let [cont_ "aiueo"]
+;;                 ((onlisp.common.util3/=fn (a b) (list (* cont_ 10) a b)) 1 2 3))
+;; (10 2 3)
+
+
+
+;; ===================================================================
+
+;; 「引数 params の先頭に継続がくる」という前提を共有してもらうようにする。
 
 (defmacro =defn
   [name params & body]
@@ -35,10 +61,20 @@
        (defmacro ~name ~params `(~~n ~~@params)))))
 
 
-(defmacro =bind
-  [params expr & body]
-  `(binding [*cont* (fn ~params ~@body)]
-     ~expr))
+(defmacro =fncall
+  [fnc & params]
+  ;; `(~fnc *cont* ~@params)
+  `(~fnc ~@params))
+
+
+(defmacro =values
+  [& retvals]
+  ;; `(*cont* ~@retvals)
+  `(~(first retvals) ~@(rest retvals)))
+
+
+;; ===================================================================
+
 
 
 ;; [ P301 chap22 ]

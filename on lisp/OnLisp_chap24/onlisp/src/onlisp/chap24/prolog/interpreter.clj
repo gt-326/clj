@@ -92,16 +92,18 @@
                               (util3/fail))
                  (do
                    (reset! util3/*paths* save-paths)
-                   ;; 外側の継続を呼ぶ
-                   (CONT binds)))))
+                   ;; 外側の継続を呼ぶ（原著の記述どおりに util3/=values を使うとこうなる）
+                   (util3/=values CONT binds)
+                   ;; (CONT binds)
+                   ))))
 
 
 (defn prove-and
   [CONT clauses binds]
   (if (empty? clauses)
-    ;; util3/=values を使用するとうまくいかないので、継続を直接実行する
-    ;; (util3/=values binds)
-    (CONT binds)
+    (util3/=values CONT binds)
+    ;; (CONT binds)
+
     (prove-query
       #(prove-and CONT (rest clauses) %)
       (first clauses) binds)))
@@ -153,7 +155,6 @@
        [~'binds]
        (prove-query util3/*cont* '~(rep_ query)
                     ;; 引数：binds の初期値に nil を渡すとうまくいかなかった。
-
                     ;; nil
                     {})
 
@@ -167,50 +168,51 @@
 (comment
 
   (do
-    (reset! onlisp.chap24.interpreter/*rlist* nil)
+    (reset! onlisp.chap24.prolog/*rlist* nil)
 
-    (onlisp.chap24.interpreter/<- (painter hogarth  william english))
-    (onlisp.chap24.interpreter/<- (painter reynolds joshua  english))
-    (onlisp.chap24.interpreter/<- (painter canale   antonio venetian))
+    (onlisp.chap24.prolog/<- (painter hogarth  william english))
+    (onlisp.chap24.prolog/<- (painter reynolds joshua  english))
+    (onlisp.chap24.prolog/<- (painter canale   antonio venetian))
 
-    (onlisp.chap24.interpreter/<- (dates hogarth  1697 1772))
-    (onlisp.chap24.interpreter/<- (dates reynolds 1723 1792))
-    (onlisp.chap24.interpreter/<- (dates canale   1697 1768))
+    (onlisp.chap24.prolog/<- (dates hogarth  1697 1772))
+    (onlisp.chap24.prolog/<- (dates reynolds 1723 1792))
+    (onlisp.chap24.prolog/<- (dates canale   1697 1768))
 
-    @onlisp.chap24.interpreter/*rlist*)
+    @onlisp.chap24.prolog/*rlist*)
 
 
   ;; ステップ 1：最もシンプルなクエリ（変数なし）
-  (onlisp.chap24.interpreter/with-inference (painter hogarth william english)
+  (onlisp.chap24.prolog/with-inference (painter hogarth william english)
     (println "matched!"))
 
   ;; ステップ 2：変数1つ
-  (onlisp.chap24.interpreter/with-inference (painter hogarth ?x english)
+  (onlisp.chap24.prolog/with-inference (painter hogarth ?x english)
     (println ?x))
   ;; => william
 
   ;; ステップ 3：複数の解を列挙
-  (onlisp.chap24.interpreter/with-inference (painter ?x ?y english)
+  (onlisp.chap24.prolog/with-inference (painter ?x ?y english)
     (println ?x ?y))
   ;; => hogarth  william
   ;;    reynolds joshua
 
   ;; ステップ 4：and クエリ
-  (onlisp.chap24.interpreter/with-inference (and (painter ?x _ english)
+  (onlisp.chap24.prolog/with-inference (and (painter ?x _ english)
                                                  (dates ?x ?b ?d))
     (println ?x ?b ?d))
   ;; => hogarth 1697 1772
   ;;    reynolds 1723 1792
 
   ;; ステップ 5：not クエリ
-  (onlisp.chap24.interpreter/with-inference (and (painter ?x ?y ?z)
+  (onlisp.chap24.prolog/with-inference (and (painter ?x ?y ?z)
                                                  (dates ?x _ ?d)
                                                  (not (dates ?x 1723 _)))
     (println ?x ?d))
   ;; => hogarth 1772
+  ;;    canale 1768
 
   ;; ステップ 6：or クエリ
-  (onlisp.chap24.interpreter/with-inference (or (dates ?x 1697 _)
+  (onlisp.chap24.prolog/with-inference (or (dates ?x 1697 _)
                                                 (dates ?x ?b 1793))
     (println ?x))
   ;; => hogarth
@@ -223,23 +225,23 @@
   ;; 6. ルールのテスト（発展）
 
   (do
-    (reset! onlisp.chap24.interpreter/*rlist* nil)
+    (reset! onlisp.chap24.prolog/*rlist* nil)
 
-    (onlisp.chap24.interpreter/<- (likes robin cats))
-    (onlisp.chap24.interpreter/<- (likes kim cats))
-    (onlisp.chap24.interpreter/<- (likes gima dogs))
+    (onlisp.chap24.prolog/<- (likes robin cats))
+    (onlisp.chap24.prolog/<- (likes kim cats))
+    (onlisp.chap24.prolog/<- (likes gima dogs))
 
-    (onlisp.chap24.interpreter/<- (likes sandy ?x) (likes ?x cats))
-    (onlisp.chap24.interpreter/<- (likes denny ?x) (likes ?x dogs))
+    (onlisp.chap24.prolog/<- (likes sandy ?x) (likes ?x cats))
+    (onlisp.chap24.prolog/<- (likes denny ?x) (likes ?x dogs))
 
-    @onlisp.chap24.interpreter/*rlist*)
+    @onlisp.chap24.prolog/*rlist*)
 
-    (onlisp.chap24.interpreter/with-inference (likes sandy ?x)
+    (onlisp.chap24.prolog/with-inference (likes sandy ?x)
       (println ?x))
   ;; => robin
   ;;    kim
 
-    (onlisp.chap24.interpreter/with-inference (likes denny ?x)
+    (onlisp.chap24.prolog/with-inference (likes denny ?x)
       (println ?x))
     ;; => gima
   )

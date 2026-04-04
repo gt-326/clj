@@ -25,12 +25,17 @@
        (~fact ~binds)
        (util2/with-gensyms
          ~(util1/vars-in (list ant con))
-         (let [~my-val (util4/match2
-                         ~fact
-                         (list '~(first con) ~@(map my-form (rest con)))
-                         ~binds)]
+         (let [~my-val
+               ;; P342 で再定義されている varsym? を使用する版の match を使用している
+               (util4/match2
+                 ~fact
+                 (list '~(first con) ~@(map my-form (rest con)))
+                 ~binds)]
            (if (map? ~my-val)
-             ~(gen-query '*cont* ant my-val)
+             ~(gen-query
+                ;; util3/=fn 内部で生成される、無名関数の第一引数の名前と合致させる必要がある
+                'cont_
+                ant my-val)
              (util3/fail)))))))
 
 
@@ -62,10 +67,36 @@
              ~(my-form (rest pat)))))
 
 
-(defn prove
-  [CONT query binds]
-  (util3/cb (fn [r] (r CONT query binds))
-            (deref *rules*)))
+(util3/=defn prove [CONT query binds]
+             (util3/choose-bind r (deref *rules*)
+                                (util3/=fncall r CONT query binds)))
+
+
+(comment
+
+  ;; 継続系のマクロの実装が誤っていた（util3/=fncall）。
+  ;; 以下の 1 〜 3 は、上記 prove にいたるまでの試行です（どれも同じ動きをするものなんだけど）。
+
+  ;; 1. util3/=fncall の使用を避けた当初のバージョン
+  (defn prove_
+    [CONT query binds]
+    (util3/cb (fn [r] (r CONT query binds))
+              (deref *rules*)))
+
+  ;; 2. util3/=fncall を使っても挙動が変わらないことを確認したもの
+  (defn prove__
+    [CONT query binds]
+    (util3/cb (fn [r] (util3/=fncall r CONT query binds))
+              (deref *rules*)))
+
+  ;; 3. util3/choose-bind を使用した（util3/=defn は使わず。原著の記述の一歩手前）
+  (defn prove___
+    [CONT query binds]
+    (util3/choose-bind
+     r
+     (deref *rules*)
+     (util3/=fncall r CONT query binds)))
+  )
 
 
 (defn gen-not
@@ -81,8 +112,10 @@
          ~(gen-query fail-cont expr binds)
          (do
            (reset! util3/*paths* ~gpaths)
-           ;; 外側の継続を呼ぶ
-           (~CONT ~binds))))))
+           ;; 外側の継続を呼ぶ（原著の記述どおりに util3/=values を使うとこうなる）
+           (util3/=values ~CONT ~binds)
+           ;; (~CONT ~binds)
+           )))))
 
 
 (defn gen-or
@@ -119,6 +152,7 @@
 (defn fullbind2
   [x b]
   (cond
+    ;; P342 で再定義されている varsym? を使用する
     ;; (util1/varsym? x)
     (util4/varsym? x)
 
