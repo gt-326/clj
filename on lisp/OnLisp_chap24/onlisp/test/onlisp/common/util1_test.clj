@@ -147,3 +147,39 @@
 
   (testing "2段ネストのマッチ"
     (is (= '{?x 1 ?y 2 ?z 3} (util1/match '(?x (?y (?z))) '(1 (2 (3))))))))
+
+
+;; =====================================================
+;; match — nil バインド済み変数 (contains? 対応)
+;; =====================================================
+
+(deftest match-nil-binding-test
+  (testing "nil にバインド済みの変数を同じ nil に再マッチ → 成功"
+    (is (= '{?x nil} (util1/match '?x nil '{?x nil}))))
+
+  (testing "nil にバインド済みの変数を別の値に再マッチ → 失敗"
+    (is (nil? (util1/match '?x 'something '{?x nil}))))
+
+  (testing "右辺変数が nil にバインド済みの場合も同様"
+    (is (= '{?y nil} (util1/match nil '?y '{?y nil})))
+    (is (nil? (util1/match 'something '?y '{?y nil})))))
+
+
+;; =====================================================
+;; match — ドット対パターン (. ?rest) / (?x . ?rest)
+;; =====================================================
+
+(deftest match-dot-pair-test
+  (testing "(. ?rest) パターン：リスト全体を ?rest に束縛"
+    (is (= '{?rest (a b c)} (util1/match '(a b c) '(. ?rest))))
+    (is (= '{?rest (1 2)}   (util1/match '(1 2)   '(. ?rest)))))
+
+  (testing "(?x . ?rest) パターン：先頭と残りを分離して束縛"
+    (is (= '{?x a ?rest (b c)} (util1/match '(a b c) '(?x . ?rest))))
+    (is (= '{?x a ?rest nil}   (util1/match '(a)     '(?x . ?rest)))))
+
+  (testing "空リスト / nil はドット対パターンにマッチしない（nil ガード）"
+    (is (nil? (util1/match '() '(?x . ?rest))))
+    (is (nil? (util1/match nil  '(?x . ?rest))))))
+
+

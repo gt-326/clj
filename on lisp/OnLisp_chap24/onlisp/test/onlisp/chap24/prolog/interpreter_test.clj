@@ -237,3 +237,34 @@
                               (member b ?lst))
                          (swap! results conj ?lst))
       (is (= ['(a b)] @results)))))
+
+
+;; =====================================================
+;; fullbind
+;; =====================================================
+
+(deftest fullbind-test
+  (testing "アトムはそのまま返す"
+    (is (= 'a  (pi/fullbind 'a  {})))
+    (is (= 42  (pi/fullbind 42  {})))
+    (is (nil?  (pi/fullbind nil {}))))
+
+  (testing "バインド済み変数 → 値を解決"
+    (is (= 'hi    (pi/fullbind '?x '{?x hi})))
+    (is (= '(1 2) (pi/fullbind '?x '{?x (1 2)}))))
+
+  (testing "nil にバインド済み変数 → nil を返す（contains? 対応）"
+    (is (nil? (pi/fullbind '?x '{?x nil}))))
+
+  (testing "未束縛変数 → gensym プレースホルダ（symbol? のみ検証）"
+    (is (symbol? (pi/fullbind '?x {}))))
+
+  (testing "変数チェーンを追跡（?x → ?y → 値）"
+    (is (= 42 (pi/fullbind '?x '{?x ?y, ?y 42}))))
+
+  (testing "リスト内の変数を再帰的に解決"
+    (is (= '(a b) (pi/fullbind '(?x ?y) '{?x a, ?y b}))))
+
+  (testing "ドット対 (. ?rest) 構造の解決"
+    (is (= '(a b) (pi/fullbind '(. ?rest) '{?rest (a b)})))
+    (is (nil?     (pi/fullbind '(. ?rest) '{?rest nil})))))
