@@ -148,6 +148,15 @@
      (my-binding x binds) (match it y binds)
      (my-binding y binds) (match x it binds)
 
+     ;; nil-value binding:
+     ;; my-binding は nil 値のバインディングを見落とす（aif の falsy 判定のため）
+     ;; contains? で「バインド済み」かを正確に判定して追跡する
+     (and (varsym? x) (contains? binds x))
+     (match (get binds x) y binds)
+
+     (and (varsym? y) (contains? binds y))
+     (match x (get binds y) binds)
+
      (varsym? x)
      ;; キーワードではなく、シンボルをキーにした
      ;; (assoc binds (keyword (apply str (name x)))
@@ -175,8 +184,15 @@
               (symbol (apply str (name x)))
               x))
 
-     (and (seqable? x)
-          (seqable? y)
+     ;; 擬似「ドット対」記法への対応
+     (and (sequential? y)
+          (= 2 (count y))
+          (= '. (first y))
+          (varsym? (second y)))
+     (assoc binds (symbol (name (second y))) (seq x))
+
+     (and (seqable? x) (seq x)
+          (seqable? y) (seq y)
           (match (first x) (first y) binds))
      (match (next x) (next y) it)
 
