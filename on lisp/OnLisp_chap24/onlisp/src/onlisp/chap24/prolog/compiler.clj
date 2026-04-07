@@ -149,27 +149,6 @@
 
 ;; P342
 
-(defn fullbind2
-  [x b]
-  (cond
-    ;; P342 で再定義されている varsym? を使用する
-    ;; (util1/varsym? x)
-    (util4/varsym? x)
-
-    (util1/aif
-      (util1/my-binding x b)
-      (fullbind2 it b)
-      (gensym))
-
-    (util1/cl-atom? x)
-    x
-
-    :else
-    (cons
-      (fullbind2 (first x) b)
-      (fullbind2 (rest x) b))))
-
-
 (defmacro with-inference2
   [query & body]
   (let [rep-query  (pi/rep_ query)           ; _ → gensym 変換を一度だけ実行
@@ -183,7 +162,7 @@
          [~gb]
          ~(gen-query 'onlisp.common.util3/*cont* rep-query {})
          (let [~@(mapcat
-                   (fn [v] `[~v (fullbind2 ~v ~gb)])
+                   (fn [v] `[~v (util4/fullbind2 ~v ~gb)])
                    user-vars)]               ; ユーザー変数だけ公開
            ~@body
            (util3/fail))))))
@@ -268,4 +247,76 @@
     (onlisp.chap24.prolog.compiler/with-inference2 (likes denny ?x)
       (println ?x))
     ;; => gima
+  )
+
+
+;; append
+
+(comment
+
+  (do
+    (reset! onlisp.chap24.prolog.compiler/*rules* nil)
+
+    (onlisp.chap24.prolog.compiler/<- (append nil ?xs ?xs))
+    (onlisp.chap24.prolog.compiler/<- (append (?x . ?xs) ?ys (?x . ?zs))
+                                       (append ?xs ?ys ?zs))
+
+    @onlisp.chap24.prolog.compiler/*rules*)
+
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (append ?x (c d) (a b c d))
+    (println (format "Left: %s" ?x)))
+  ;; #_=> Left: (a b)
+  ;; [end]
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (append (a b) ?x (a b c d))
+    (println (format "Right: %s" ?x)))
+  ;; #_=> Right: (c d)
+  ;; [end]
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (append (a b) (c d) ?x)
+    (println (format "Whole: %s" ?x)))
+  ;; #_=> Whole: (a b c d)
+  ;; [end]
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (append ?x ?y (a b c))
+    (println (format "Left: %s Right: %s" ?x ?y)))
+  ;; #_=> Left: null Right: (a b c)
+  ;; Left: (a) Right: (b c)
+  ;; Left: (a b) Right: (c)
+  ;; Left: (a b c) Right: null
+  ;; [end]
+
+  )
+
+
+;; member/first-a
+
+(comment
+
+  (do
+    (reset! onlisp.chap24.prolog.compiler/*rules* nil)
+
+    ;; member
+    (onlisp.chap24.prolog.compiler/<- (member ?x (?x . ?rest)))
+    (onlisp.chap24.prolog.compiler/<- (member ?x (_ . ?rest))
+                                      (member ?x ?rest))
+
+    ;; first-a
+    (onlisp.chap24.prolog.compiler/<- (first-a (a _)))
+
+    @onlisp.chap24.prolog.compiler/*rules*)
+
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (member a (a b))
+    (println true))
+  ;; #_=> true
+  ;; [end]
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (and (first-a ?lst)
+                                                      (member b ?lst))
+    (println ?lst))
+  ;; #_=> (a b)
+  ;; [end]
+
   )

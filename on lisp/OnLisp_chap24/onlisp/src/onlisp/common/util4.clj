@@ -14,6 +14,43 @@
        (util2/gensym? x)))  ; G__ プレフィックスの判定
 
 
+;; P342
+
+(defn fullbind2
+  [x b]
+  (cond
+    ;; P342 で再定義されている varsym? を使用する
+    ;; (util1/varsym? x)
+    (varsym? x)
+
+    ;;    (util1/aif
+    ;;      (util1/my-binding x b)
+    ;;      (fullbind2 it b)
+    ;;      (gensym))
+
+    (if (contains? b x)
+      (fullbind2 (get b x) b)  ; バインド済み（nil でも）→ 追跡
+      (gensym))                ; 真の未束縛変数 → gensym プレースホルダ
+
+    (util1/cl-atom? x)
+    x
+
+    ;; ここに追加: (. rest-part) チェーンを seq として解決
+    (and (sequential? x)
+         ;; 擬似「ドット対」記法への対応
+         (= '. (first x)))
+    (let [resolved (fullbind2 (second x) b)]
+      (cond
+        (nil? resolved)        nil
+        (sequential? resolved) resolved
+        :else                  (list resolved)))
+
+    :else
+    (cons
+      (fullbind2 (first x) b)
+      (fullbind2 (rest x) b))))
+
+
 ;; ========================================================
 ;; varsym? を再定義し、既出の関数（util1/match）の挙動を変えたい
 ;; ========================================================
@@ -31,12 +68,19 @@
      (util1/my-binding x binds) (match2 it y binds)
      (util1/my-binding y binds) (match2 x it binds)
 
-     (varsym? x)
-     ;; キーワードではなく、シンボルをキーにした
-     ;; (assoc binds (keyword (apply str (name x)))
+     ;; nil-value binding:
+     ;; my-binding は nil 値のバインディングを見落とす（aif の falsy 判定のため）
+     ;; contains? で「バインド済み」かを正確に判定して追跡する
+     (and (varsym? x) (contains? binds x))
+     (match2 (get binds x) y binds)
 
+     (and (varsym? y) (contains? binds y))
+     (match2 x (get binds y) binds)
+
+     (varsym? x)
      (do
-       ;; (println x ":" y ":" binds)
+       ;; キーワードではなく、シンボルをキーにした
+       ;; (assoc binds (keyword (apply str (name x)))
 
        (if (map? binds)
          (assoc binds (symbol (apply str (name x)))
@@ -58,8 +102,15 @@
               (symbol (apply str (name x)))
               x))
 
-     (and (seqable? x)
-          (seqable? y)
+     ;; 擬似「ドット対」記法への対応
+     (and (sequential? y)
+          (= 2 (count y))
+          (= '. (first y))
+          (varsym? (second y)))
+     (assoc binds (symbol (name (second y))) (seq x))
+
+     (and (seqable? x) (seq x)
+          (seqable? y) (seq y)
           (match2 (first x) (first y) binds))
      (match2 (next x) (next y) it)
 

@@ -159,3 +159,81 @@
       (pc/with-inference2 (same-birth canale ?y)
         (swap! results conj ?y))
       (is (= '[canale hogarth] @results)))))
+
+
+;; =====================================================
+;; with-inference2 — ドット対パターン (append)
+;; =====================================================
+
+(defn setup-append
+  []
+  (reset! pc/*rules* nil)
+  (pc/<- (append nil ?xs ?xs))
+  (pc/<- (append (?x . ?xs) ?ys (?x . ?zs))
+         (append ?xs ?ys ?zs)))
+
+
+(deftest with-inference2-append-test
+
+  (testing "append: 左部分リストを求める（?x (c d) = (a b c d)）"
+    (setup-append)
+    (let [results (atom [])]
+      (pc/with-inference2 (append ?x (c d) (a b c d))
+        (swap! results conj ?x))
+      (is (= ['(a b)] @results))))
+
+  (testing "append: 右部分リストを求める（(a b) ?x = (a b c d)）"
+    (setup-append)
+    (let [results (atom [])]
+      (pc/with-inference2 (append (a b) ?x (a b c d))
+        (swap! results conj ?x))
+      (is (= ['(c d)] @results))))
+
+  (testing "append: 結合リストを求める（(a b) (c d) = ?x）"
+    (setup-append)
+    (let [results (atom [])]
+      (pc/with-inference2 (append (a b) (c d) ?x)
+        (swap! results conj ?x))
+      (is (= ['(a b c d)] @results))))
+
+  (testing "append: 全分割を列挙（?x ?y = (a b c)）"
+    (setup-append)
+    (let [results (atom [])]
+      (pc/with-inference2 (append ?x ?y (a b c))
+        (swap! results conj [?x ?y]))
+      (is (= [[nil '(a b c)]
+              ['(a) '(b c)]
+              ['(a b) '(c)]
+              ['(a b c) nil]]
+             @results)))))
+
+
+;; =====================================================
+;; with-inference2 — ドット対パターン (member / first-a)
+;; =====================================================
+
+(defn setup-member
+  []
+  (reset! pc/*rules* nil)
+  (pc/<- (member ?x (?x . ?rest)))
+  (pc/<- (member ?x (_ . ?rest))
+         (member ?x ?rest))
+  (pc/<- (first-a (a _))))
+
+
+(deftest with-inference2-member-test
+
+  (testing "member: リスト先頭要素のマッチ（1件）"
+    (setup-member)
+    (let [n (atom 0)]
+      (pc/with-inference2 (member a (a b))
+        (swap! n inc))
+      (is (= 1 @n))))
+
+  (testing "member + first-a: ?lst の推論"
+    (setup-member)
+    (let [results (atom [])]
+      (pc/with-inference2 (and (first-a ?lst)
+                               (member b ?lst))
+        (swap! results conj ?lst))
+      (is (= ['(a b)] @results)))))
