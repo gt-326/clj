@@ -1,7 +1,8 @@
 (ns onlisp.chap24.prolog.interpreter-test
   (:require
     [clojure.test :refer [deftest is testing use-fixtures]]
-    [onlisp.chap24.prolog.interpreter :as pi]))
+    [onlisp.chap24.prolog.interpreter :as pi]
+    [onlisp.common.util2 :as util2]))
 
 
 ;; with-inference は各マッチでボディを実行し、全解消費後に [end] を返す。
@@ -268,3 +269,146 @@
   (testing "ドット対 (. ?rest) 構造の解決"
     (is (= '(a b) (pi/fullbind '(. ?rest) '{?rest (a b)})))
     (is (nil?     (pi/fullbind '(. ?rest) '{?rest nil})))))
+
+
+;; =====================================================
+;; with-inference — チェーンルール (likes)
+;; =====================================================
+
+(defn setup-likes
+  []
+  (reset! pi/*rlist* nil)
+  (pi/<- (likes robin cats))
+  (pi/<- (likes kim   cats))
+  (pi/<- (likes gima  dogs))
+  (pi/<- (likes sandy ?x) (likes ?x cats))
+  (pi/<- (likes denny ?x) (likes ?x dogs)))
+
+
+(deftest with-inference-likes-test
+
+  (testing "likes: sandy が好きなものを列挙"
+    (setup-likes)
+    (let [results (atom [])]
+      (pi/with-inference (likes sandy ?x)
+                         (swap! results conj ?x))
+      (is (= '[robin kim] @results))))
+
+  (testing "likes: denny が好きなものを列挙"
+    (setup-likes)
+    (let [results (atom [])]
+      (pi/with-inference (likes denny ?x)
+                         (swap! results conj ?x))
+      (is (= '[gima] @results)))))
+
+
+;; =====================================================
+;; with-inference — ネストしたルール (painter/hungry)
+;; =====================================================
+
+(defn setup-painter-rules
+  []
+  (reset! pi/*rlist* nil)
+  (pi/<- (painter ?x) (hungry ?x) (smells-of ?x turpentine))
+  (pi/<- (hungry ?x) (or (gaunt ?x) (eats-ravenously ?x)))
+  (pi/<- (gaunt raoul))
+  (pi/<- (smells-of raoul turpentine))
+  (pi/<- (painter rubens)))
+
+
+(deftest with-inference-painter-rules-test
+
+  (testing "painter: hungry + smells-of のルールとファクトの組み合わせ"
+    (setup-painter-rules)
+    (let [results (atom [])]
+      (pi/with-inference (painter ?x)
+                         (swap! results conj ?x))
+      (is (= '[raoul rubens] @results)))))
+
+
+;; =====================================================
+;; with-inference — 未束縛変数と gensym (eats)
+;; =====================================================
+
+(defn setup-eats
+  []
+  (reset! pi/*rlist* nil)
+  (pi/<- (eats ?x ?f) (glutton ?x))
+  (pi/<- (glutton hubert)))
+
+
+(deftest with-inference-eats-test
+
+  (testing "eats: spinach を食べる人"
+    (setup-eats)
+    (let [results (atom [])]
+      (pi/with-inference (eats ?x spinach)
+                         (swap! results conj ?x))
+      (is (= '[hubert] @results))))
+
+  (testing "eats: 未束縛の ?y は gensym になる"
+    (setup-eats)
+    (let [results (atom [])]
+      (pi/with-inference (eats ?x ?y)
+                         (swap! results conj [?x (util2/gensym? ?y)]))
+      (is (= '[[hubert true]] @results))))
+
+  (testing "eats: 複数ファクト追加後の全解（gensym は everything に変換）"
+    (setup-eats)
+    (pi/<- (eats monster bad-children))
+    (pi/<- (eats warhol candy))
+    (let [results (atom [])]
+      (pi/with-inference (eats ?x ?y)
+                         (swap! results conj
+                                [?x (if (util2/gensym? ?y) 'everything ?y)]))
+      (is (= '[[hubert everything] [monster bad-children] [warhol candy]]
+             @results)))))
+
+
+;; =====================================================
+;; with-inference — 無限生成 (all-elements)
+;; =====================================================
+
+(defn setup-all-elements
+  []
+  (reset! pi/*rlist* nil)
+  (pi/<- (all-elements ?x nil))
+  (pi/<- (all-elements ?x (?x . ?rest))
+         (all-elements ?x ?rest)))
+
+
+(deftest with-inference-all-elements-test
+
+  (testing "all-elements: nil リストは任意の要素にマッチ（1解）"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pi/with-inference (all-elements a nil)
+                         (swap! results conj true))
+      (is (= [true] @results))))
+
+  (testing "all-elements: 全要素が一致するリスト"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pi/with-inference (all-elements a (a a a))
+                         (swap! results conj true))
+      (is (= [true] @results))))
+
+  (testing "all-elements: 要素が混在するリストはマッチなし"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pi/with-inference (all-elements a (a b))
+                         (swap! results conj true))
+      (is (= [] @results))))
+
+  (testing "all-elements: 無限生成 — 最初の 4 解を収集して停止"
+    ;; 解は nil, (a), (a a), (a a a), ... と無限に続く
+    ;; 4解に達したら例外で脱出する
+    (setup-all-elements)
+    (let [results (atom [])]
+      (try
+        (pi/with-inference (all-elements a ?x)
+                           (swap! results conj ?x)
+                           (when (= 4 (count @results))
+                             (throw (Exception. "stop"))))
+        (catch Exception _))
+      (is (= [nil '(a) '(a a) '(a a a)] @results)))))

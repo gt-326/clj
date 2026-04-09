@@ -1,0 +1,600 @@
+(ns onlisp.chap24.prolog.compiler2-test
+  (:require
+    [clojure.test :refer [deftest is testing use-fixtures]]
+    [onlisp.chap24.prolog.compiler2 :as pc2]
+    [onlisp.common.util2 :as util2]))
+
+
+;; with-inference3 は各マッチでボディを実行し、全解消費後に [end] を返す。
+;; テストでは (atom []) にマッチ結果を蓄積して検証する。
+;;
+;; *rules* に以下のファクトを登録（conc1f による末尾追加 → 挿入順）:
+;;
+;;   painter: (canale antonio venetian)
+;;            (hogarth william english)
+;;            (reynolds joshua english)
+;;   dates:   (canale 1697 1768)
+;;            (hogarth 1697 1772)
+;;            (reynolds 1723 1792)
+
+(defn setup-facts
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (painter canale antonio venetian))
+  (pc2/<- (painter hogarth william english))
+  (pc2/<- (painter reynolds joshua english))
+  (pc2/<- (dates canale 1697 1768))
+  (pc2/<- (dates hogarth 1697 1772))
+  (pc2/<- (dates reynolds 1723 1792)))
+
+
+(use-fixtures :each (fn [f] (setup-facts) (f)))
+
+
+;; =====================================================
+;; with-inference3 — 単一述語（既出確認）
+;; =====================================================
+
+(deftest with-inference3-simple-test
+  (testing "変数なし：hogarth にマッチ → 1件"
+    (let [n (atom 0)]
+      (pc2/with-inference3 (painter hogarth william english)
+                           (swap! n inc))
+      (is (= 1 @n))))
+
+  (testing "変数あり：英国人画家の名前（挿入順）"
+    (let [results (atom [])]
+      (pc2/with-inference3 (painter ?x _ english)
+                           (swap! results conj ?x))
+      (is (= '[hogarth reynolds] @results))))
+
+  (testing "変数あり：全画家の名前・姓・国籍"
+    (let [results (atom [])]
+      (pc2/with-inference3 (painter ?x ?y ?z)
+                           (swap! results conj [?x ?y ?z]))
+      (is (= '[[canale antonio venetian]
+               [hogarth william english]
+               [reynolds joshua english]]
+             @results))))
+
+  (testing "マッチなし → 結果なし"
+    (let [results (atom [])]
+      (pc2/with-inference3 (painter nobody ?x ?y)
+                           (swap! results conj ?x))
+      (is (= [] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — and（既出確認）
+;; =====================================================
+
+(deftest with-inference3-and-test
+  (testing "painter と dates の結合（英国人のみ）"
+    (let [results (atom [])]
+      (pc2/with-inference3 (and (painter ?x ?y english)
+                                (dates ?x ?b ?d))
+                           (swap! results conj [?x ?y ?b ?d]))
+      (is (= '[[hogarth william 1697 1772]
+               [reynolds joshua 1723 1792]]
+             @results))))
+
+  (testing "全画家の生没年"
+    (let [results (atom [])]
+      (pc2/with-inference3 (and (painter ?x _ _)
+                                (dates ?x ?b ?d))
+                           (swap! results conj [?x ?b ?d]))
+      (is (= '[[canale 1697 1768]
+               [hogarth 1697 1772]
+               [reynolds 1723 1792]]
+             @results)))))
+
+
+;; =====================================================
+;; with-inference3 — or（既出確認）
+;; =====================================================
+
+(deftest with-inference3-or-test
+  (testing "or: 英国人またはヴェネチア人（全3画家）"
+    (let [results (atom [])]
+      (pc2/with-inference3 (or (painter ?x _ english)
+                               (painter ?x _ venetian))
+                           (swap! results conj ?x))
+      (is (= '[hogarth reynolds canale] @results))))
+
+  (testing "and + or: 英国人で生年が1697か1723"
+    (let [results (atom [])]
+      (pc2/with-inference3 (and (painter ?x _ english)
+                                (or (dates ?x 1697 _)
+                                    (dates ?x 1723 _)))
+                           (swap! results conj ?x))
+      (is (= '[hogarth reynolds] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — not（既出確認）
+;; =====================================================
+
+(deftest with-inference3-not-test
+  (testing "1697年生まれでない英国人画家"
+    (let [results (atom [])]
+      (pc2/with-inference3 (and (painter ?x _ english)
+                                (dates ?x ?b _)
+                                (not (dates ?x 1697 _)))
+                           (swap! results conj ?x))
+      (is (= '[reynolds] @results))))
+
+  (testing "生年がヴェネチア人と重複しない英国人画家"
+    (let [results (atom [])]
+      (pc2/with-inference3 (and (painter ?x _ english)
+                                (dates ?x ?b _)
+                                (not (and (painter ?x2 _ venetian)
+                                          (dates ?x2 ?b _))))
+                           (swap! results conj ?x))
+      (is (= '[reynolds] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — 本体付きルール（既出確認）
+;; =====================================================
+
+(deftest with-inference3-rule-test
+  (testing "単体ルール：英国人画家"
+    (pc2/<- (english-painter ?x) (painter ?x _ english))
+    (let [results (atom [])]
+      (pc2/with-inference3 (english-painter ?x)
+                           (swap! results conj ?x))
+      (is (= '[hogarth reynolds] @results))))
+
+  (testing "複合ルール：生年が同じ画家のペア"
+    (pc2/<- (same-birth ?x ?y)
+            (dates ?x ?b _)
+            (dates ?y ?b _))
+    (let [results (atom [])]
+      (pc2/with-inference3 (same-birth canale ?y)
+                           (swap! results conj ?y))
+      (is (= '[canale hogarth] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — cut: minimum (P346)
+;; =====================================================
+
+(deftest with-inference3-minimum-test
+
+  (testing "minimum: cut なし（条件は排他的なので結果は同じ）"
+    ;; 2つのルールは条件が排他的なので cut 有無で結果は変わらない。
+    ;; cut の有無は効率の違いであり、ここでは正しい値が返ることを確認する。
+    (reset! pc2/*rules* nil)
+    (pc2/<- (minimum ?x ?y ?x) (clj (<= ?x ?y)))
+    (pc2/<- (minimum ?x ?y ?y) (clj (> ?x ?y)))
+    (let [r1 (atom []) r2 (atom [])]
+      (pc2/with-inference3 (minimum 1 2 ?x) (swap! r1 conj ?x))
+      (pc2/with-inference3 (minimum 3 2 ?x) (swap! r2 conj ?x))
+      (is (= [1] @r1))
+      (is (= [2] @r2))))
+
+  (testing "minimum: cut あり（最初のルールが成功したら後続ルールを打ち切り）"
+    (reset! pc2/*rules* nil)
+    (pc2/<- (minimum ?x ?y ?x) (clj (<= ?x ?y)) (cut))
+    (pc2/<- (minimum ?x ?y ?y) (clj (> ?x ?y)))
+    (let [r1 (atom []) r2 (atom []) r3 (atom [])]
+      (pc2/with-inference3 (minimum 1  2 ?x) (swap! r1 conj ?x))
+      (pc2/with-inference3 (minimum 1 -2 ?x) (swap! r2 conj ?x))
+      (pc2/with-inference3 (minimum 3  2 ?x) (swap! r3 conj ?x))
+      (is (= [1]  @r1))   ; 1 ≤ 2 → 第1ルール成功・cut
+      (is (= [-2] @r2))   ; 1 > -2 なので第1ルール失敗、第2ルールで -2
+      (is (= [2]  @r3))))) ; 3 > 2 → 第1ルール失敗、第2ルールで 2
+
+
+;; =====================================================
+;; with-inference3 — cut: artist (P346-347)
+;; =====================================================
+
+(deftest with-inference3-artist-test
+
+  (testing "artist: cut なし → sculptor + painter の全解"
+    ;; sculptor → hepworth
+    ;; painter  → klee, soutine
+    (reset! pc2/*rules* nil)
+    (pc2/<- (artist ?x) (sculptor ?x))
+    (pc2/<- (artist ?x) (painter ?x))
+    (pc2/<- (painter 'klee))
+    (pc2/<- (painter 'soutine))
+    (pc2/<- (sculptor 'hepworth))
+    (let [results (atom [])]
+      (pc2/with-inference3 (artist ?x) (swap! results conj ?x))
+      (is (= '[hepworth klee soutine] @results))))
+
+  (testing "artist: cut あり → sculptor の解のみ（painter 節を打ち切り）"
+    ;; (artist ?x) :- (sculptor ?x) (cut)
+    ;; cut により第2節 (painter) への探索が打ち切られる
+    (reset! pc2/*rules* nil)
+    (pc2/<- (artist ?x) (sculptor ?x) (cut))
+    (pc2/<- (artist ?x) (painter ?x))
+    (pc2/<- (painter 'klee))
+    (pc2/<- (painter 'soutine))
+    (pc2/<- (sculptor 'hepworth))
+    (let [results (atom [])]
+      (pc2/with-inference3 (artist ?x) (swap! results conj ?x))
+      (is (= '[hepworth] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — cut + fail: not-equal (P357)
+;; =====================================================
+
+(deftest with-inference3-not-equal-test
+  ;; (not-equal ?x ?x) (cut) (fail)
+  ;;   → 同じ引数のとき: cut で第2節を封じ、fail で失敗 → 解なし
+  ;;   → cut がないと第2節 (not-equal ?x ?y) が成功してしまう（誤った結果）
+  ;; (not-equal ?x ?y)
+  ;;   → 異なる引数のとき: 無条件に成功
+
+  (reset! pc2/*rules* nil)
+  (pc2/<- (not-equal ?x ?x) (cut) (fail))
+  (pc2/<- (not-equal ?x ?y))
+
+  (testing "not-equal: 同じ引数 → 解なし（cut + fail が正しく動作）"
+    (let [results (atom [])]
+      (pc2/with-inference3 (not-equal 'a 'a)
+                           (swap! results conj true))
+      (is (= [] @results))))
+
+  (testing "not-equal: 異なる引数 → 成功"
+    (let [results (atom [])]
+      (pc2/with-inference3 (not-equal '(a a) '(a b))
+                           (swap! results conj true))
+      (is (= [true] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — clj: ordered (P350)
+;; =====================================================
+
+(defn setup-ordered
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (ordered (?x)))
+  (pc2/<- (ordered (?x ?y . ?ys))
+          (clj (<= ?x ?y))
+          (ordered (?y . ?ys))))
+
+
+(deftest with-inference3-ordered-test
+
+  (testing "ordered: 昇順リスト → 成功"
+    (setup-ordered)
+    (let [results (atom [])]
+      (pc2/with-inference3 (ordered '(1 2 3))
+                           (swap! results conj true))
+      (is (= [true] @results))))
+
+  (testing "ordered: 単一要素リスト → 成功"
+    (setup-ordered)
+    (let [results (atom [])]
+      (pc2/with-inference3 (ordered '(42))
+                           (swap! results conj true))
+      (is (= [true] @results))))
+
+  (testing "ordered: 順序が乱れたリスト → 解なし"
+    (setup-ordered)
+    (let [results (atom [])]
+      (pc2/with-inference3 (ordered '(1 3 2))
+                           (swap! results conj true))
+      (is (= [] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — clj + is: factorial (P351)
+;; =====================================================
+
+(defn setup-factorial
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (factorial 0 1))
+  (pc2/<- (factorial ?n ?f)
+          (clj (> ?n 0))
+          (is ?n1 (- ?n 1))
+          (factorial ?n1 ?f1)
+          (is ?f (* ?n ?f1))))
+
+
+(deftest with-inference3-factorial-test
+
+  (testing "factorial: 0! = 1"
+    (setup-factorial)
+    (let [results (atom [])]
+      (pc2/with-inference3 (factorial 0 ?x)
+                           (swap! results conj ?x))
+      (is (= [1] @results))))
+
+  (testing "factorial: 5! = 120"
+    (setup-factorial)
+    (let [results (atom [])]
+      (pc2/with-inference3 (factorial 5 ?x)
+                           (swap! results conj ?x))
+      (is (= [120] @results))))
+
+  (testing "factorial: 8! = 40320"
+    (setup-factorial)
+    (let [results (atom [])]
+      (pc2/with-inference3 (factorial 8 ?x)
+                           (swap! results conj ?x))
+      (is (= [40320] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — quick-sort (P351-352)
+;; =====================================================
+
+(defn setup-quicksort
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (append nil ?ys ?ys))
+  (pc2/<- (append (?x . ?xs) ?ys (?x . ?zs))
+          (append ?xs ?ys ?zs))
+  (pc2/<- (quick-sort nil nil))
+  (pc2/<- (quick-sort (?x . ?xs) ?ys)
+          (partition ?xs ?x ?littles ?bigs)
+          (quick-sort ?littles ?ls)
+          (quick-sort ?bigs ?bs)
+          (append ?ls (?x . ?bs) ?ys))
+  (pc2/<- (partition nil ?y nil nil))
+  (pc2/<- (partition (?x . ?xs) ?y (?x . ?ls) ?bs)
+          (clj (<= ?x ?y))
+          (partition ?xs ?y ?ls ?bs))
+  (pc2/<- (partition (?x . ?xs) ?y ?ls (?x . ?bs))
+          (clj (> ?x ?y))
+          (partition ?xs ?y ?ls ?bs)))
+
+
+(deftest with-inference3-quicksort-test
+
+  (testing "quick-sort: 空リスト → 空リスト"
+    (setup-quicksort)
+    (let [results (atom [])]
+      (pc2/with-inference3 (quick-sort nil ?x)
+                           (swap! results conj ?x))
+      (is (= [nil] @results))))
+
+  (testing "quick-sort: 4要素リストをソート"
+    (setup-quicksort)
+    (let [results (atom [])]
+      (pc2/with-inference3 (quick-sort '(4 1 3 2) ?x)
+                           (swap! results conj ?x))
+      (is (= ['(1 2 3 4)] @results))))
+
+  (testing "quick-sort: 既にソート済みのリスト"
+    (setup-quicksort)
+    (let [results (atom [])]
+      (pc2/with-inference3 (quick-sort '(1 2 3) ?x)
+                           (swap! results conj ?x))
+      (is (= ['(1 2 3)] @results))))
+
+  (testing "quick-sort: 逆順リスト"
+    (setup-quicksort)
+    (let [results (atom [])]
+      (pc2/with-inference3 (quick-sort '(3 2 1) ?x)
+                           (swap! results conj ?x))
+      (is (= ['(1 2 3)] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — ドット対パターン (append)
+;; =====================================================
+
+(defn setup-append
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (append nil ?xs ?xs))
+  (pc2/<- (append (?x . ?xs) ?ys (?x . ?zs))
+          (append ?xs ?ys ?zs)))
+
+
+(deftest with-inference3-append-test
+
+  (testing "append: 左部分リストを求める（?x (c d) = (a b c d)）"
+    (setup-append)
+    (let [results (atom [])]
+      (pc2/with-inference3 (append ?x (c d) (a b c d))
+                           (swap! results conj ?x))
+      (is (= ['(a b)] @results))))
+
+  (testing "append: 右部分リストを求める（(a b) ?x = (a b c d)）"
+    (setup-append)
+    (let [results (atom [])]
+      (pc2/with-inference3 (append (a b) ?x (a b c d))
+                           (swap! results conj ?x))
+      (is (= ['(c d)] @results))))
+
+  (testing "append: 結合リストを求める（(a b) (c d) = ?x）"
+    (setup-append)
+    (let [results (atom [])]
+      (pc2/with-inference3 (append (a b) (c d) ?x)
+                           (swap! results conj ?x))
+      (is (= ['(a b c d)] @results))))
+
+  (testing "append: 全分割を列挙（?x ?y = (a b c)）"
+    (setup-append)
+    (let [results (atom [])]
+      (pc2/with-inference3 (append ?x ?y (a b c))
+                           (swap! results conj [?x ?y]))
+      (is (= [[nil '(a b c)]
+              ['(a) '(b c)]
+              ['(a b) '(c)]
+              ['(a b c) nil]]
+             @results)))))
+
+
+;; =====================================================
+;; with-inference3 — ドット対パターン (member / first-a)
+;; =====================================================
+
+(defn setup-member
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (member ?x (?x . ?rest)))
+  (pc2/<- (member ?x (_ . ?rest))
+          (member ?x ?rest))
+  (pc2/<- (first-a (a _))))
+
+
+(deftest with-inference3-member-test
+
+  (testing "member: リスト先頭要素のマッチ（1件）"
+    (setup-member)
+    (let [n (atom 0)]
+      (pc2/with-inference3 (member a (a b))
+                           (swap! n inc))
+      (is (= 1 @n))))
+
+  (testing "member + first-a: ?lst の推論"
+    (setup-member)
+    (let [results (atom [])]
+      (pc2/with-inference3 (and (first-a ?lst)
+                                (member b ?lst))
+                           (swap! results conj ?lst))
+      (is (= ['(a b)] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — チェーンルール (likes)
+;; =====================================================
+
+(defn setup-likes
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (likes robin cats))
+  (pc2/<- (likes kim   cats))
+  (pc2/<- (likes gima  dogs))
+  (pc2/<- (likes sandy ?x) (likes ?x cats))
+  (pc2/<- (likes denny ?x) (likes ?x dogs)))
+
+
+(deftest with-inference3-likes-test
+
+  (testing "likes: sandy が好きなものを列挙"
+    (setup-likes)
+    (let [results (atom [])]
+      (pc2/with-inference3 (likes sandy ?x)
+                           (swap! results conj ?x))
+      (is (= '[robin kim] @results))))
+
+  (testing "likes: denny が好きなものを列挙"
+    (setup-likes)
+    (let [results (atom [])]
+      (pc2/with-inference3 (likes denny ?x)
+                           (swap! results conj ?x))
+      (is (= '[gima] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — ネストしたルール (painter/hungry)
+;; =====================================================
+
+(defn setup-painter-rules
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (painter ?x) (hungry ?x) (smells-of ?x turpentine))
+  (pc2/<- (hungry ?x) (or (gaunt ?x) (eats-ravenously ?x)))
+  (pc2/<- (gaunt raoul))
+  (pc2/<- (smells-of raoul turpentine))
+  (pc2/<- (painter rubens)))
+
+
+(deftest with-inference3-painter-rules-test
+
+  (testing "painter: hungry + smells-of のルールとファクトの組み合わせ"
+    (setup-painter-rules)
+    (let [results (atom [])]
+      (pc2/with-inference3 (painter ?x)
+                           (swap! results conj ?x))
+      (is (= '[raoul rubens] @results)))))
+
+
+;; =====================================================
+;; with-inference3 — 未束縛変数と gensym (eats)
+;; =====================================================
+
+(defn setup-eats
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (eats ?x ?f) (glutton ?x))
+  (pc2/<- (glutton hubert)))
+
+
+(deftest with-inference3-eats-test
+
+  (testing "eats: spinach を食べる人"
+    (setup-eats)
+    (let [results (atom [])]
+      (pc2/with-inference3 (eats ?x spinach)
+                           (swap! results conj ?x))
+      (is (= '[hubert] @results))))
+
+  (testing "eats: 未束縛の ?y は gensym になる"
+    (setup-eats)
+    (let [results (atom [])]
+      (pc2/with-inference3 (eats ?x ?y)
+                           (swap! results conj [?x (util2/gensym? ?y)]))
+      (is (= '[[hubert true]] @results))))
+
+  (testing "eats: 複数ファクト追加後の全解（gensym は everything に変換）"
+    (setup-eats)
+    (pc2/<- (eats monster bad-children))
+    (pc2/<- (eats warhol candy))
+    (let [results (atom [])]
+      (pc2/with-inference3 (eats ?x ?y)
+                           (swap! results conj
+                                  [?x (if (util2/gensym? ?y) 'everything ?y)]))
+      (is (= '[[hubert everything] [monster bad-children] [warhol candy]]
+             @results)))))
+
+
+;; =====================================================
+;; with-inference3 — 無限生成 (all-elements)
+;; =====================================================
+
+(defn setup-all-elements
+  []
+  (reset! pc2/*rules* nil)
+  (pc2/<- (all-elements ?x nil))
+  (pc2/<- (all-elements ?x (?x . ?rest))
+          (all-elements ?x ?rest)))
+
+
+(deftest with-inference3-all-elements-test
+
+  (testing "all-elements: nil リストは任意の要素にマッチ（1解）"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pc2/with-inference3 (all-elements a nil)
+                           (swap! results conj true))
+      (is (= [true] @results))))
+
+  (testing "all-elements: 全要素が一致するリスト"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pc2/with-inference3 (all-elements a (a a a))
+                           (swap! results conj true))
+      (is (= [true] @results))))
+
+  (testing "all-elements: 要素が混在するリストはマッチなし"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pc2/with-inference3 (all-elements a (a b))
+                           (swap! results conj true))
+      (is (= [] @results))))
+
+  (testing "all-elements: 無限生成 — 最初の 4 解を収集して停止"
+    ;; 解は nil, (a), (a a), (a a a), ... と無限に続く
+    ;; 4解に達したら例外で脱出する
+    (setup-all-elements)
+    (let [results (atom [])]
+      (try
+        (pc2/with-inference3 (all-elements a ?x)
+                             (swap! results conj ?x)
+                             (when (= 4 (count @results))
+                               (throw (Exception. "stop"))))
+        (catch Exception _))
+      (is (= [nil '(a) '(a a) '(a a a)] @results)))))

@@ -1,7 +1,8 @@
 (ns onlisp.chap24.prolog.compiler-test
   (:require
     [clojure.test :refer [deftest is testing use-fixtures]]
-    [onlisp.chap24.prolog.compiler :as pc]))
+    [onlisp.chap24.prolog.compiler :as pc]
+    [onlisp.common.util2 :as util2]))
 
 
 ;; with-inference2 は各マッチでボディを実行し、全解消費後に [end] を返す。
@@ -38,19 +39,19 @@
   (testing "変数なし：hogarth にマッチ → 1件"
     (let [n (atom 0)]
       (pc/with-inference2 (painter hogarth william english)
-        (swap! n inc))
+                          (swap! n inc))
       (is (= 1 @n))))
 
   (testing "変数あり：英国人画家の名前（挿入順）"
     (let [results (atom [])]
       (pc/with-inference2 (painter ?x _ english)
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= '[hogarth reynolds] @results))))
 
   (testing "変数あり：全画家の名前・姓・国籍"
     (let [results (atom [])]
       (pc/with-inference2 (painter ?x ?y ?z)
-        (swap! results conj [?x ?y ?z]))
+                          (swap! results conj [?x ?y ?z]))
       (is (= '[[canale antonio venetian]
                [hogarth william english]
                [reynolds joshua english]]
@@ -59,7 +60,7 @@
   (testing "マッチなし → 結果なし"
     (let [results (atom [])]
       (pc/with-inference2 (painter nobody ?x ?y)
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= [] @results)))))
 
 
@@ -72,7 +73,7 @@
     (let [results (atom [])]
       (pc/with-inference2 (and (painter ?x ?y english)
                                (dates ?x ?b ?d))
-        (swap! results conj [?x ?y ?b ?d]))
+                          (swap! results conj [?x ?y ?b ?d]))
       (is (= '[[hogarth william 1697 1772]
                [reynolds joshua 1723 1792]]
              @results))))
@@ -81,7 +82,7 @@
     (let [results (atom [])]
       (pc/with-inference2 (and (painter ?x _ _)
                                (dates ?x ?b ?d))
-        (swap! results conj [?x ?b ?d]))
+                          (swap! results conj [?x ?b ?d]))
       (is (= '[[canale 1697 1768]
                [hogarth 1697 1772]
                [reynolds 1723 1792]]
@@ -98,7 +99,7 @@
     (let [results (atom [])]
       (pc/with-inference2 (or (painter ?x _ english)
                               (painter ?x _ venetian))
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= '[hogarth reynolds canale] @results))))
 
   (testing "and + or: 英国人で生年が1697か1723"
@@ -106,7 +107,7 @@
       (pc/with-inference2 (and (painter ?x _ english)
                                (or (dates ?x 1697 _)
                                    (dates ?x 1723 _)))
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= '[hogarth reynolds] @results)))))
 
 
@@ -121,7 +122,7 @@
       (pc/with-inference2 (and (painter ?x _ english)
                                (dates ?x ?b _)
                                (not (dates ?x 1697 _)))
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= '[reynolds] @results))))
 
   (testing "生年がヴェネチア人と重複しない英国人画家"
@@ -132,7 +133,7 @@
                                (dates ?x ?b _)
                                (not (and (painter ?x2 _ venetian)
                                          (dates ?x2 ?b _))))
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= '[reynolds] @results)))))
 
 
@@ -146,7 +147,7 @@
     (pc/<- (english-painter ?x) (painter ?x _ english))
     (let [results (atom [])]
       (pc/with-inference2 (english-painter ?x)
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= '[hogarth reynolds] @results))))
 
   (testing "複合ルール：生年が同じ画家のペア"
@@ -157,7 +158,7 @@
            (dates ?y ?b _))
     (let [results (atom [])]
       (pc/with-inference2 (same-birth canale ?y)
-        (swap! results conj ?y))
+                          (swap! results conj ?y))
       (is (= '[canale hogarth] @results)))))
 
 
@@ -179,28 +180,28 @@
     (setup-append)
     (let [results (atom [])]
       (pc/with-inference2 (append ?x (c d) (a b c d))
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= ['(a b)] @results))))
 
   (testing "append: 右部分リストを求める（(a b) ?x = (a b c d)）"
     (setup-append)
     (let [results (atom [])]
       (pc/with-inference2 (append (a b) ?x (a b c d))
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= ['(c d)] @results))))
 
   (testing "append: 結合リストを求める（(a b) (c d) = ?x）"
     (setup-append)
     (let [results (atom [])]
       (pc/with-inference2 (append (a b) (c d) ?x)
-        (swap! results conj ?x))
+                          (swap! results conj ?x))
       (is (= ['(a b c d)] @results))))
 
   (testing "append: 全分割を列挙（?x ?y = (a b c)）"
     (setup-append)
     (let [results (atom [])]
       (pc/with-inference2 (append ?x ?y (a b c))
-        (swap! results conj [?x ?y]))
+                          (swap! results conj [?x ?y]))
       (is (= [[nil '(a b c)]
               ['(a) '(b c)]
               ['(a b) '(c)]
@@ -227,7 +228,7 @@
     (setup-member)
     (let [n (atom 0)]
       (pc/with-inference2 (member a (a b))
-        (swap! n inc))
+                          (swap! n inc))
       (is (= 1 @n))))
 
   (testing "member + first-a: ?lst の推論"
@@ -235,5 +236,156 @@
     (let [results (atom [])]
       (pc/with-inference2 (and (first-a ?lst)
                                (member b ?lst))
-        (swap! results conj ?lst))
+                          (swap! results conj ?lst))
       (is (= ['(a b)] @results)))))
+
+
+;; =====================================================
+;; with-inference2 — チェーンルール (likes)
+;; =====================================================
+
+(defn setup-likes
+  []
+  (reset! pc/*rules* nil)
+  (pc/<- (likes robin cats))
+  (pc/<- (likes kim   cats))
+  (pc/<- (likes gima  dogs))
+  (pc/<- (likes sandy ?x) (likes ?x cats))
+  (pc/<- (likes denny ?x) (likes ?x dogs)))
+
+
+(deftest with-inference2-likes-test
+
+  (testing "likes: sandy が好きなものを列挙"
+    (setup-likes)
+    (let [results (atom [])]
+      (pc/with-inference2 (likes sandy ?x)
+                          (swap! results conj ?x))
+      (is (= '[robin kim] @results))))
+
+  (testing "likes: denny が好きなものを列挙"
+    (setup-likes)
+    (let [results (atom [])]
+      (pc/with-inference2 (likes denny ?x)
+                          (swap! results conj ?x))
+      (is (= '[gima] @results)))))
+
+
+;; =====================================================
+;; with-inference2 — ネストしたルール (painter/hungry)
+;; =====================================================
+
+(defn setup-painter-rules
+  []
+  (reset! pc/*rules* nil)
+  (pc/<- (painter ?x) (hungry ?x) (smells-of ?x turpentine))
+  (pc/<- (hungry ?x) (or (gaunt ?x) (eats-ravenously ?x)))
+  (pc/<- (gaunt raoul))
+  (pc/<- (smells-of raoul turpentine))
+  (pc/<- (painter rubens)))
+
+
+(deftest with-inference2-painter-rules-test
+
+  (testing "painter: hungry + smells-of のルールとファクトの組み合わせ"
+    (setup-painter-rules)
+    (let [results (atom [])]
+      (pc/with-inference2 (painter ?x)
+                          (swap! results conj ?x))
+      (is (= '[raoul rubens] @results)))))
+
+
+;; =====================================================
+;; with-inference2 — 未束縛変数と gensym (eats)
+;; =====================================================
+
+(defn setup-eats
+  []
+  (reset! pc/*rules* nil)
+  (pc/<- (eats ?x ?f) (glutton ?x))
+  (pc/<- (glutton hubert)))
+
+
+(deftest with-inference2-eats-test
+
+  (testing "eats: spinach を食べる人"
+    (setup-eats)
+    (let [results (atom [])]
+      (pc/with-inference2 (eats ?x spinach)
+                          (swap! results conj ?x))
+      (is (= '[hubert] @results))))
+
+  (testing "eats: 未束縛の ?y は gensym になる"
+    (setup-eats)
+    (let [results (atom [])]
+      (pc/with-inference2 (eats ?x ?y)
+                          (swap! results conj [?x (util2/gensym? ?y)]))
+      (is (= '[[hubert true]] @results))))
+
+  (testing "eats: 複数ファクト追加後の全解（gensym は everything に変換）"
+    (setup-eats)
+    (pc/<- (eats monster bad-children))
+    (pc/<- (eats warhol candy))
+    (let [results (atom [])]
+      (pc/with-inference2 (eats ?x ?y)
+                          (swap! results conj
+                                 [?x (if (util2/gensym? ?y) 'everything ?y)]))
+      (is (= '[[hubert everything] [monster bad-children] [warhol candy]]
+             @results)))))
+
+
+;; =====================================================
+;; with-inference2 — 無限生成 (all-elements)
+;; =====================================================
+
+(defn setup-all-elements
+  []
+  (reset! pc/*rules* nil)
+  (pc/<- (all-elements ?x nil))
+  (pc/<- (all-elements ?x (?x . ?rest))
+         (all-elements ?x ?rest)))
+
+
+(deftest with-inference2-all-elements-test
+
+  (testing "all-elements: nil リストは任意の要素にマッチ（1解）"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pc/with-inference2 (all-elements a nil)
+                          (swap! results conj true))
+      (is (= [true] @results))))
+
+  (testing "all-elements: 全要素が一致するリスト"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pc/with-inference2 (all-elements a (a a a))
+                          (swap! results conj true))
+      (is (= [true] @results))))
+
+  (testing "all-elements: 要素が混在するリストはマッチなし"
+    (setup-all-elements)
+    (let [results (atom [])]
+      (pc/with-inference2 (all-elements a (a b))
+                          (swap! results conj true))
+      (is (= [] @results))))
+
+  (testing "all-elements: 無限生成 — 最初の 4 解を収集して停止"
+    ;; 解は nil, (a), (a a), (a a a), ... と無限に続く
+    ;; 4解に達したら例外で脱出する
+    (setup-all-elements)
+    (let [results (atom [])]
+      (try
+        (pc/with-inference2 (all-elements a ?x)
+                            (swap! results conj ?x)
+                            (when (= 4 (count @results))
+                              (throw (Exception. "stop"))))
+        (catch Exception _))
+      (is (= [nil '(a) '(a a) '(a a a)] @results)))))
+
+
+(comment
+
+
+
+
+  )

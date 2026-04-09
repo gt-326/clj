@@ -6,6 +6,7 @@
     [onlisp.chap19.interpreter :as inter]
     ;; 作業中
     [onlisp.chap24.prolog.compiler :as pc]
+    [onlisp.chap24.prolog.compiler2 :as pc2]
     [onlisp.chap24.prolog.interpreter :as pi]
     [onlisp.common.util3 :as util3]
     [onlisp.store :as store]))

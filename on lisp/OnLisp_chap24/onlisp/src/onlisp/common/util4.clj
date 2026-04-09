@@ -102,12 +102,50 @@
               (symbol (apply str (name x)))
               x))
 
-     ;; 擬似「ドット対」記法への対応
+     ;; ====================================================
+     ;; 擬似「ドット対」記法への対応　その１
      (and (sequential? y)
           (= 2 (count y))
           (= '. (first y))
           (varsym? (second y)))
-     (assoc binds (symbol (name (second y))) (seq x))
+
+     ;; 提案された「2」をこのブロックで適用しようとすると、
+     ;; repl 起動時にエラーが出たり、compiler_test でエラーになったりした。
+     (do
+       ;; (println "y: " `(if (contains? ~binds (second '~y))
+       ;;                   (fullbind2 (second '~y) ~binds)
+       ;;                   (second '~y)))
+
+       ;; 1
+       (assoc binds (symbol (name (second y))) (seq x))
+
+       ;; 2
+       ;; (match2 (if (contains? binds (second x))
+       ;;          (fullbind2 (second x) binds)
+       ;;          (second x))
+       ;;        y binds)
+       )
+
+     ;; ====================================================
+     ;; 擬似「ドット対」記法への対応　その２
+
+     (and (sequential? x)
+          (= 2 (count x))
+          (= '. (first x))
+          (varsym? (second x)))
+
+     (do
+       ;; (println "x: " `(if (contains? ~binds (second '~x))
+       ;;                   (fullbind2 (second '~x) ~binds)
+       ;;                   (second '~x)))
+
+       ;; 2
+       (match2 (if (contains? binds (second x))
+                 (fullbind2 (second x) binds)
+                 (second x))
+               y binds))
+
+     ;; ====================================================
 
      (and (seqable? x) (seq x)
           (seqable? y) (seq y)

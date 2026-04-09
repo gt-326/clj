@@ -250,7 +250,79 @@
   )
 
 
-;; append
+;; painter (P336 - 337)
+
+(comment
+
+  (do
+    (reset! onlisp.chap24.prolog.compiler/*rules* nil)
+
+    (onlisp.chap24.prolog.compiler/<- (painter ?x)
+                                       (hungry ?x)
+                                       (smells-of ?x turpentine))
+
+    (onlisp.chap24.prolog.compiler/<- (hungry ?x)
+                                       (or
+                                        (gaunt ?x)
+                                        (eats-ravenously ?x)))
+
+    (onlisp.chap24.prolog.compiler/<- (gaunt raoul))
+    (onlisp.chap24.prolog.compiler/<- (smells-of raoul turpentine))
+    (onlisp.chap24.prolog.compiler/<- (painter rubens))
+
+    @onlisp.chap24.prolog.compiler/*rules*)
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (painter ?x)
+    (println ?x))
+
+  ;; #_=> raoul
+  ;; rubens
+  ;; [end]
+
+  )
+
+
+;; eats (P337 - 338)
+
+(comment
+
+  (do
+    (reset! onlisp.chap24.prolog.compiler/*rules* nil)
+
+    (onlisp.chap24.prolog.compiler/<- (eats ?x ?f) (glutton ?x))
+    (onlisp.chap24.prolog.compiler/<- (glutton hubert))
+
+    @onlisp.chap24.prolog.compiler/*rules*)
+
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (eats ?x spinach)
+    (println ?x))
+
+  ;; #_=> hubert
+  ;; [end]
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (eats ?x ?y)
+    (println [?x ?y]))
+
+  ;; #_=> [hubert G__4880]
+  ;; [end]
+
+
+  (onlisp.chap24.prolog.compiler/<- (eats monster bad-children))
+  (onlisp.chap24.prolog.compiler/<- (eats warhol candy))
+
+  (onlisp.chap24.prolog.compiler/with-inference2 (eats ?x ?y)
+    (println (format "%s eats %s" ?x (if (onlisp.common.util2/gensym? ?y) 'everything ?y))))
+
+  ;; #_=> hubert eats everything
+  ;; monster eats bad-children
+  ;; warhol eats candy
+  ;; [end]
+
+  )
+
+
+;; append (P338 - 339)
 
 (comment
 
@@ -290,7 +362,7 @@
   )
 
 
-;; member/first-a
+;; member/first-a (P339 - 340)
 
 (comment
 
@@ -318,5 +390,34 @@
     (println ?lst))
   ;; #_=> (a b)
   ;; [end]
+
+  )
+
+
+;; all-elements (P340 - 341)
+
+(comment
+
+  (do
+    (reset! onlisp.chap24.prolog.compiler/*rules* nil)
+
+    (onlisp.chap24.prolog.compiler/<- (all-elements ?x nil))
+    (onlisp.chap24.prolog.compiler/<- (all-elements ?x (?x . ?rest))
+                                      (all-elements ?x ?rest))
+
+    @onlisp.chap24.prolog.compiler/*rules*)
+
+  (try
+    (doseq [a '(() (1) (2 3) (3 4 5) (4 5 6 7))]
+      (onlisp.chap24.prolog.compiler/with-inference2 (all-elements a ?x)
+        (if (< (count ?x) 4)
+          (println a ":" ?x)
+          (throw (Exception. "quit")))))
+    (catch Exception e (.getMessage e)))
+  ;; #_=> () : nil
+  ;; () : (a)
+  ;; () : (a a)
+  ;; () : (a a a)
+  ;; "quit"
 
   )
