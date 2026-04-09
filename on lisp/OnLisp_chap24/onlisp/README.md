@@ -1,7 +1,7 @@
 # On Lisp — Clojure 移植 (chap18 / chap19 / chap24)
 
 Paul Graham 著『On Lisp』第18章・第19章・第24章のコードを Clojure に移植したプロジェクト。
-パターンマッチング、Prolog 風クエリエンジン（コンパイル型）、継続ベース Prolog インタープリタの3系統を実装している。
+パターンマッチング、Prolog 風クエリエンジン（コンパイル型）、継続ベース Prolog インタープリタ／コンパイラの3系統を実装している。
 
 ---
 
@@ -12,7 +12,8 @@ src/onlisp/
 ├── common/
 │   ├── util1.clj          共通ユーティリティ（match, vars-in, aif 等）
 │   ├── util2.clj          共通ユーティリティ（with-gensyms, gensym? 等）
-│   └── util3.clj          CPS / バックトラック・ユーティリティ（=defn, =bind, fail 等）
+│   ├── util3.clj          CPS / バックトラック・ユーティリティ（=defn, =bind, fail 等）
+│   └── util4.clj          gensym 変数用ユーティリティ（match2, fullbind2 等）
 ├── store.clj              ファクト DB（make-db, db-push, fact, gen-facts）
 ├── chap18/
 │   ├── destructuring.clj  分配束縛（destruc, dbind, with-struct 等）
@@ -22,14 +23,22 @@ src/onlisp/
 │   ├── interpreter.clj    クエリインタープリタ（with-answer）
 │   └── compiler.clj       クエリコンパイラ（with-answer-compile）
 └── chap24/
-    └── interpreter.clj    Prolog インタープリタ（with-inference, <-）
+    └── prolog/
+        ├── interpreter.clj  Prolog インタープリタ（with-inference）
+        ├── compiler.clj     Prolog コンパイラ（with-inference2）
+        └── compiler2.clj    Prolog 拡張コンパイラ（with-inference3 / cut / clj / is）
 
 test/onlisp/
-├── common/util1_test.clj
+├── common/
+│   ├── util1_test.clj
+│   └── util4_test.clj
 ├── store_test.clj
 ├── chap18/quick_test.clj
 ├── chap19/compiler_test.clj
-└── chap24/interpreter_test.clj
+└── chap24/prolog/
+    ├── interpreter_test.clj
+    ├── compiler_test.clj
+    └── compiler2_test.clj
 ```
 
 ---
@@ -83,6 +92,18 @@ CPS（継続渡しスタイル）とバックトラックの基盤。chap20・ch
 | `cb fnc choices` | `choices` を1つずつ `fnc` に渡し、残りを `*paths*` に積む |
 | `choose-bind param choices & body` | `cb` のマクロラッパー |
 | `choose & choices` | 各選択肢を `*paths*` に積み、最初の選択肢を実行する |
+
+### common/util4.clj
+
+gensym 変数（`G__` プレフィックス）専用の単一化とバインド展開ユーティリティ。
+chap24 のコンパイラ系（`compiler.clj` / `compiler2.clj`）で使用される。
+`util1` の `?` 変数系と対比して、コード生成時の gensym 変数を扱う。
+
+| 関数/マクロ | 概要 |
+|---|---|
+| `varsym? x` | `G__` プレフィックスの gensym シンボルかを判定する |
+| `fullbind2 x binds` | gensym 変数のバインディングをチェーン展開して最終値を返す |
+| `match2 x y [binds]` | gensym 変数を用いた単一化。パターン `x` と値 `y` を照合しバインディングマップを返す |
 
 ### store.clj
 
@@ -199,7 +220,7 @@ CL の `destructuring-bind` に相当する分配束縛マクロ群。
 | `not` | 節がマッチしない場合のみ通過 |
 | `clj` | 任意の Clojure 式をガード条件として埋め込む |
 
-### chap24/interpreter.clj — Prolog インタープリタ
+### chap24/prolog/interpreter.clj — Prolog インタープリタ
 
 `with-inference` マクロ。`util3` の CPS / バックトラック機構を基盤とした
 **実行時** Prolog インタープリタ。ルールはダイナミック Var `*rlist*` に蓄積される。
@@ -274,14 +295,123 @@ CL の `destructuring-bind` に相当する分配束縛マクロ群。
 | `fullbind x binds` | バインディングをチェーン展開して最終値を返す |
 | `rep_ x` | クエリ中の `_` を gensym に置き換える |
 
+### chap24/prolog/compiler.clj — Prolog コンパイラ
+
+`with-inference2` マクロ。インタープリタ版（`with-inference`）と同じクエリ構文・同じ機能を持ちながら、
+ルールを**コンパイル時**に `=fn` クロージャへ変換するコード生成型の Prolog エンジン。
+変数には `?` シンボルではなく `with-gensyms` で生成した gensym（`G__` プレフィックス）を使用し、`util4/match2` で照合する。
+
+**ファクト・ルール登録:**
+
+```clojure
+(<- (painter hogarth william english))
+(<- (english-painter ?x) (painter ?x _ english))
+(<- (same-birth ?x ?y) (dates ?x ?b _) (dates ?y ?b _))
+```
+
+**クエリ実行:**（構文・結果はインタープリタ版と同一）
+
+```clojure
+(with-inference2 (painter ?x _ english) (println ?x))
+;=> hogarth
+;   reynolds
+
+(with-inference2 (append ?x (c d) (a b c d)) (println ?x))
+;=> (a b)
+```
+
+主要な内部関数/マクロ:
+
+| 関数/マクロ | 概要 |
+|---|---|
+| `<- con & ant` | ファクト・ルールを `*rules*` に登録するマクロ |
+| `with-inference2 query & body` | クエリをコード生成して実行するマクロ |
+| `rule-fn r` | ルールを `=fn` クロージャに変換する |
+| `my-form x` | パターン要素を Clojure コードに変換する（gensym 変数・リテラル・クォート） |
+| `gen-query cont goal binds` | クエリを種別（and/or/not/単純）にコード生成する |
+| `gen-and`, `gen-or`, `gen-not` | 各演算子のコード生成 |
+| `gen-simple cont goal binds` | `*rules*` の各ルールを試みるコードを生成する |
+
+### chap24/prolog/compiler2.clj — Prolog 拡張コンパイラ
+
+`with-inference3` マクロ。`compiler.clj` を拡張し、`cut`・`clj`・`is` ゴールを追加。
+カット制御のために `paths` パラメータを `=fn` / `gen-*` 全関数にスレッドする。
+
+**新規ゴール:**
+
+| ゴール | 概要 |
+|---|---|
+| `cut` | カットポイントまでのバックトラック選択肢を廃棄する |
+| `clj expr` | 任意の Clojure 式をガード条件として評価する（`with-binds` で変数解決） |
+| `is var expr` | Clojure 式の結果を Prolog 変数にバインドする（`match2` で代入） |
+
+**使用例:**
+
+```clojure
+;; cut — sculptor に一意に絞り込む
+(<- (artist ?x) (sculptor ?x) (cut))
+(<- (artist ?x) (painter ?x))
+(with-inference3 (artist ?x) (println ?x))
+;=> hepworth    ; cut により sculptor の解のみ。painter 節は試みない
+
+;; not-equal — cut + fail パターン
+(<- (not-equal ?x ?x) (cut) (fail))
+(<- (not-equal ?x ?y))
+(with-inference3 (not-equal 'a 'b) (println true))
+;=> true
+
+;; clj — Clojure 式をガード条件に
+(<- (ordered ?lst) (clj (apply <= ?lst)))
+(with-inference3 (ordered '(1 2 3)) (println true))
+;=> true
+
+;; is — 算術（階乗）
+(<- (factorial 0 1))
+(<- (factorial ?n ?r)
+    (clj (pos? ?n))
+    (is ?m (dec ?n))
+    (factorial ?m ?s)
+    (is ?r (* ?n ?s)))
+(with-inference3 (factorial 5 ?r) (println ?r))
+;=> 120
+```
+
+主要な内部関数/マクロ:
+
+| 関数/マクロ | 概要 |
+|---|---|
+| `<- con & ant` | ファクト・ルールを `*rules*` に登録するマクロ |
+| `with-inference3 query & body` | クエリをコード生成して実行するマクロ |
+| `rule-fn r paths` | `paths` パラメータを加えた `=fn` クロージャを生成する |
+| `with-binds binds & body` | バインディングマップを解決して body を評価するマクロ |
+| `gen-is cont var expr binds paths` | `is` ゴールのコード生成 |
+| `gen-cut cont paths` | `cut` ゴールのコード生成 |
+| `gen-clj cont expr binds paths` | `clj` ゴールのコード生成 |
+
+---
+
+## chap24 三層アーキテクチャ
+
+chap24 には Prolog エンジンが3段階で実装されている。
+
+| | `with-inference` | `with-inference2` | `with-inference3` |
+|---|---|---|---|
+| ファイル | `interpreter.clj` | `compiler.clj` | `compiler2.clj` |
+| 変数体系 | `?x`（util1/match） | gensym（util4/match2） | gensym（util4/match2） |
+| ルール評価 | 実行時 match | コード生成（=fn） | コード生成（=fn + paths） |
+| `cut` | なし | なし | あり |
+| `clj` | なし | なし | あり |
+| `is` | なし | なし | あり |
+| クエリ構文 | 共通（`and` / `or` / `not`） | ← 同左 | ← 同左 + `cut` / `clj` / `is` |
+
 ---
 
 ## chap19 vs chap24 — クエリエンジンの比較
 
-| | chap19 `with-answer`／`with-answer-compile` | chap24 `with-inference` |
+| | chap19 `with-answer`／`with-answer-compile` | chap24 `with-inference` 系 |
 |---|---|---|
-| 実装方式 | DB ベース（`store.clj`） | `*rlist*` ベース（ダイナミック Var） |
-| ルール定義 | `fact` マクロ（DB に格納） | `<-` マクロ（`*rlist*` に追加） |
+| 実装方式 | DB ベース（`store.clj`） | `*rlist*` / `*rules*` ベース（ダイナミック Var） |
+| ルール定義 | `fact` マクロ（DB に格納） | `<-` マクロ（リストに追加） |
 | クエリ評価 | マクロ展開時（interpreter）/ コンパイル時（compiler） | 実行時 CPS |
 | バックトラック | なし | `*paths*` スタックによる深さ優先探索 |
 | 本体付きルール | なし（ファクトのみ） | あり（`<-` で複数節ルールを定義可能） |
@@ -298,12 +428,15 @@ lein test
 
 | テストファイル | 対象 | tests / assertions |
 |---|---|---|
-| `common/util1_test.clj` | `match`, `varsym?`, `vars-in` | 8 / 41 |
+| `common/util1_test.clj` | `match`, `varsym?`, `vars-in` | 10 / 51 |
+| `common/util4_test.clj` | `match2`, `fullbind2`, `varsym?` | 13 / 73 |
 | `store_test.clj` | `make-db`, `clear-db`, `db-query`, `db-push`, `fact`, `gen-facts` | 6 / 25 |
 | `chap18/quick_test.clj` | `if-match-quick`, `if-match-quick2`, `abab4`〜`abab7` | 9 / 22 |
 | `chap19/compiler_test.clj` | `with-answer-compile`, `abab` | 6 / 13 |
-| `chap24/interpreter_test.clj` | `with-inference`, `<-`、ルール定義 | 5 / 12 |
-| **合計** | | **34 / 113** |
+| `chap24/prolog/interpreter_test.clj` | `with-inference`、ルール定義、append / member / eats 等 | 12 / 39 |
+| `chap24/prolog/compiler_test.clj` | `with-inference2`、ルール定義、append / member / eats 等 | 11 / 28 |
+| `chap24/prolog/compiler2_test.clj` | `with-inference3`、cut / clj / is、factorial / quick-sort 等 | 17 / 47 |
+| **合計** | | **84 / 298** |
 
 ---
 
@@ -318,8 +451,12 @@ util1, util2
                         └── chap19/interpreter  (with-answer)
                         └── chap19/compiler     (with-answer-compile)
 
-util1, util3
-    └── chap24/interpreter  (with-inference)
+util1, util2, util3
+    └── chap24/prolog/interpreter  (with-inference)
+
+util1, util2, util3, util4
+    └── chap24/prolog/compiler     (with-inference2)
+    └── chap24/prolog/compiler2    (with-inference3)
 ```
 
 ---
