@@ -39,9 +39,35 @@
          (c/=values (inc x)))
 
 
-(let [fnc (c/=fn [n] (add1 10))]
-  (c/=bind [y] (c/=fncall fnc 0)
+(let [fnc (c/=fn [n] (add1 n))]
+  (c/=bind [y] (c/=fncall fnc 9)
            (format "9 + 1 = %s" y)))
+
+
+;; #_=> "9 + 1 = 10"
+
+
+(c/=defn bar [x]
+         (c/=values (str "bar: " x)))
+
+
+(c/=defn baz [x]
+         (c/=values (str "baz: " (inc x))))
+
+
+(c/=defn foo [x]
+         (c/=bind [y] (bar x)
+                  (println (format "Ho %s" y))
+                  (c/=bind [z] (baz x)
+                           (println (format "Hum %s." z))
+                           (c/=values x y z))))
+
+
+;; onlisp.core=> (foo 1)
+;; Ho bar: 1
+;; Hum. baz: 2
+;; (1 "bar: 1" "baz: 2")
+
 
 
 ;; [ P278 chap20.2 ]
