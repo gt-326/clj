@@ -1,8 +1,9 @@
-(ns onlisp.chap21.common.layer2-test
+(ns onlisp.chap21.common.layer2.controller-test
   (:require
     [clojure.test :refer [deftest is testing use-fixtures]]
-    [onlisp.chap21.common.layer1 :as l1]
-    [onlisp.chap21.common.layer2 :as l2]))
+    [onlisp.chap21.common.layer1.core :as c]
+    [onlisp.chap21.common.layer1.stat :as s]
+    [onlisp.chap21.common.layer2.controller :as con]))
 
 
 ;; =====================================================
@@ -13,15 +14,15 @@
 ;; 各テスト前後に reset! でリセットする。
 ;;
 ;; arbitrator / wait / yield は PROC が設定済みであることを前提とする。
-;; テスト内では reset! l1/PROC で明示的に設定してから呼び出す。
+;; テスト内では reset! s/PROC で明示的に設定してから呼び出す。
 
 (defn reset-state!
   [f]
-  (reset! l1/PROCS nil)
-  (reset! l1/PROC  nil)
+  (reset! s/PROCS nil)
+  (reset! s/PROC  nil)
   (f)
-  (reset! l1/PROCS nil)
-  (reset! l1/PROC  nil))
+  (reset! s/PROCS nil)
+  (reset! s/PROC  nil))
 
 
 (use-fixtures :each reset-state!)
@@ -33,7 +34,7 @@
   (try
     (thunk)
     (catch clojure.lang.ExceptionInfo e
-      (when-not (= (str l1/HALT) (.getMessage e))
+      (when-not (= (str s/HALT) (.getMessage e))
         (throw e)))))
 
 
@@ -43,26 +44,26 @@
 
 (deftest fork-test
   (testing "fork は PROCS にプロセスを1件追加する"
-    (reset! l1/PROCS nil)
-    (l2/fork (+ 1 2) 5)
-    (is (= 1 (count @l1/PROCS))))
+    (reset! s/PROCS nil)
+    (con/fork (+ 1 2) 5)
+    (is (= 1 (count @s/PROCS))))
 
   (testing "fork で登録したプロセスの :pri が正しい"
-    (reset! l1/PROCS nil)
-    (l2/fork (+ 1 2) 7)
-    (is (= 7 (:pri (first @l1/PROCS)))))
+    (reset! s/PROCS nil)
+    (con/fork (+ 1 2) 7)
+    (is (= 7 (:pri (first @s/PROCS)))))
 
   (testing "fork で登録したプロセスは :wait nil を持つ"
-    (reset! l1/PROCS nil)
-    (l2/fork (+ 1 2) 5)
-    (is (nil? (:wait (first @l1/PROCS)))))
+    (reset! s/PROCS nil)
+    (con/fork (+ 1 2) 5)
+    (is (nil? (:wait (first @s/PROCS)))))
 
   (testing "fork を複数回呼ぶと PROCS に蓄積される"
-    (reset! l1/PROCS nil)
-    (l2/fork (+ 1 2) 1)
-    (l2/fork (+ 3 4) 2)
-    (l2/fork (+ 5 6) 3)
-    (is (= 3 (count @l1/PROCS)))))
+    (reset! s/PROCS nil)
+    (con/fork (+ 1 2) 1)
+    (con/fork (+ 3 4) 2)
+    (con/fork (+ 5 6) 3)
+    (is (= 3 (count @s/PROCS)))))
 
 
 ;; =====================================================
@@ -71,23 +72,23 @@
 
 (deftest halt-throws-test
   (testing "halt は ExceptionInfo を投げる"
-    (is (thrown? clojure.lang.ExceptionInfo (l2/halt))))
+    (is (thrown? clojure.lang.ExceptionInfo (con/halt))))
 
   (testing "halt のメッセージは HALT の文字列表現"
     (try
-      (l2/halt)
+      (con/halt)
       (catch clojure.lang.ExceptionInfo e
-        (is (= (str l1/HALT) (.getMessage e))))))
+        (is (= (str s/HALT) (.getMessage e))))))
 
   (testing "halt は引数なしで {:val nil} を含む ExceptionInfo を投げる"
     (try
-      (l2/halt)
+      (con/halt)
       (catch clojure.lang.ExceptionInfo e
         (is (= {:val nil} (ex-data e))))))
 
   (testing "halt val は {:val val} を含む ExceptionInfo を投げる"
     (try
-      (l2/halt :stop)
+      (con/halt :stop)
       (catch clojure.lang.ExceptionInfo e
         (is (= {:val :stop} (ex-data e)))))))
 
@@ -98,15 +99,15 @@
 
 (deftest setpri-test
   (testing "setpri は PROC の :pri を変更する"
-    (reset! l1/PROC (l1/make-proc :pri 5 :state str :wait nil))
-    (l2/setpri 10)
-    (is (= 10 (:pri @l1/PROC))))
+    (reset! s/PROC (c/make-proc :pri 5 :state str :wait nil))
+    (con/setpri 10)
+    (is (= 10 (:pri @s/PROC))))
 
   (testing "setpri は :state と :wait を変更しない"
-    (reset! l1/PROC (l1/make-proc :pri 5 :state str :wait nil))
-    (l2/setpri 99)
-    (is (= str  (:state @l1/PROC)))
-    (is (nil?   (:wait  @l1/PROC)))))
+    (reset! s/PROC (c/make-proc :pri 5 :state str :wait nil))
+    (con/setpri 99)
+    (is (= str  (:state @s/PROC)))
+    (is (nil?   (:wait  @s/PROC)))))
 
 
 ;; =====================================================
@@ -115,34 +116,34 @@
 
 (deftest kill-with-arg-test
   (testing "(kill obj) は指定プロセスを PROCS から除去する"
-    (let [p1 (l1/make-proc :pri 1 :state str :wait nil)
-          p2 (l1/make-proc :pri 2 :state str :wait nil)]
-      (reset! l1/PROCS [p1 p2])
-      (l2/kill p1)
-      (is (not (some #{p1} @l1/PROCS)))
-      (is (some #{p2} @l1/PROCS))))
+    (let [p1 (c/make-proc :pri 1 :state str :wait nil)
+          p2 (c/make-proc :pri 2 :state str :wait nil)]
+      (reset! s/PROCS [p1 p2])
+      (con/kill p1)
+      (is (not (some #{p1} @s/PROCS)))
+      (is (some #{p2} @s/PROCS))))
 
   (testing "(kill obj) は nil を返す"
-    (let [p (l1/make-proc :pri 1 :state str :wait nil)]
-      (reset! l1/PROCS [p])
-      (is (nil? (l2/kill p)))))
+    (let [p (c/make-proc :pri 1 :state str :wait nil)]
+      (reset! s/PROCS [p])
+      (is (nil? (con/kill p)))))
 
   (testing "(kill obj) は存在しないプロセスを渡しても PROCS を壊さない"
-    (let [p1 (l1/make-proc :pri 1 :state str :wait nil)
-          p2 (l1/make-proc :pri 2 :state str :wait nil)]
-      (reset! l1/PROCS [p1])
-      (l2/kill p2)                      ; p2 は PROCS にいない
-      (is (= 1 (count @l1/PROCS))))))   ; p1 は残る
+    (let [p1 (c/make-proc :pri 1 :state str :wait nil)
+          p2 (c/make-proc :pri 2 :state str :wait nil)]
+      (reset! s/PROCS [p1])
+      (con/kill p2)                    ; p2 は PROCS にいない
+      (is (= 1 (count @s/PROCS))))))   ; p1 は残る
 
 
 (deftest kill-no-arg-test
   (testing "(kill) は次のプロセスを実行する"
     (let [log (atom [])]
-      (reset! l1/PROCS
-              [(l1/make-proc :pri 5
-                             :state (fn [_] (swap! log conj :executed) (l2/halt))
-                             :wait nil)])
-      (run-until-halt l2/kill)
+      (reset! s/PROCS
+              [(c/make-proc :pri 5
+                            :state (fn [_] (swap! log conj :executed) (con/halt))
+                            :wait nil)])
+      (run-until-halt con/kill)
       (is (= [:executed] @log)))))
 
 
@@ -163,27 +164,27 @@
 (deftest arbitrator-updates-proc-test
   (testing "arbitrator は PROC の :wait と :state を更新して PROCS に追加する"
     (let [new-wait (fn [] false)
-          new-cont (fn [_] (l2/halt))
-          stopper  (l1/make-proc :pri 99 :state (fn [_] (l2/halt)) :wait nil)]
-      (reset! l1/PROC  (l1/make-proc :pri 5 :state str :wait nil))
-      (reset! l1/PROCS [stopper])
-      (run-until-halt #(l2/arbitrator new-wait new-cont))
+          new-cont (fn [_] (con/halt))
+          stopper  (c/make-proc :pri 99 :state (fn [_] (con/halt)) :wait nil)]
+      (reset! s/PROC  (c/make-proc :pri 5 :state str :wait nil))
+      (reset! s/PROCS [stopper])
+      (run-until-halt #(con/arbitrator new-wait new-cont))
       ;; stopper(pri=99) が先に実行されて halt
       ;; arbitrator が追加した PROC（pri=5, wait=new-wait）は PROCS に残る
       (is (some #(and (= new-wait (:wait %))
                       (= new-cont (:state %)))
-                @l1/PROCS))))
+                @s/PROCS))))
 
   (testing "arbitrator 後、PROC の :wait と :state が指定した値に変わっている"
     (let [new-wait (fn [] true)
-          new-cont (fn [_] (l2/halt))
-          stopper  (l1/make-proc :pri 99 :state (fn [_] (l2/halt)) :wait nil)]
-      (reset! l1/PROC  (l1/make-proc :pri 5 :state str :wait nil))
-      (reset! l1/PROCS [stopper])
+          new-cont (fn [_] (con/halt))
+          stopper  (c/make-proc :pri 99 :state (fn [_] (con/halt)) :wait nil)]
+      (reset! s/PROC  (c/make-proc :pri 5 :state str :wait nil))
+      (reset! s/PROCS [stopper])
       ;; stopper が halt するより前に PROC を確認するため、
       ;; halt 後でも PROCS に残ったエントリで検証する
-      (run-until-halt #(l2/arbitrator new-wait new-cont))
-      (is (some #(= new-wait (:wait %)) @l1/PROCS)))))
+      (run-until-halt #(con/arbitrator new-wait new-cont))
+      (is (some #(= new-wait (:wait %)) @s/PROCS)))))
 
 
 ;; =====================================================
@@ -214,14 +215,14 @@
   ;; test には「評価結果として param に渡したい値」を直接書く。
   (testing "wait は条件の評価結果を param に束縛して body を実行する"
     (let [received (atom :not-set)]
-      (reset! l1/PROCS
-              [(l1/make-proc :pri 5
-                             :state (fn [_]
-                                      (l2/wait result :condition-met
+      (reset! s/PROCS
+              [(c/make-proc :pri 5
+                            :state (fn [_]
+                                     (con/wait result :condition-met
                                                (reset! received result)
-                                               (l2/halt)))
-                             :wait nil)])
-      (run-until-halt l1/pick-process)
+                                               (con/halt)))
+                            :wait nil)])
+      (run-until-halt s/pick-process)
       (is (= :condition-met @received)))))
 
 
@@ -229,21 +230,21 @@
   (testing "wait は条件が false のあいだプロセスを待機させ、true になると再開する"
     (let [flag (atom false)
           log  (atom [])]
-      (reset! l1/PROCS
+      (reset! s/PROCS
               [;; p1(pri=2): flag が true になるまで待機
-               (l1/make-proc :pri 2
-                             :state (fn [_]
-                                      (l2/wait _ @flag
+               (c/make-proc :pri 2
+                            :state (fn [_]
+                                     (con/wait _ @flag
                                                (swap! log conj :resumed)
-                                               (l2/halt)))
-                             :wait nil)
+                                               (con/halt)))
+                            :wait nil)
                ;; p2(pri=1): flag を true にして pick-process へ渡す
-               (l1/make-proc :pri 1
-                             :state (fn [_]
-                                      (reset! flag true)
-                                      (l1/pick-process))
-                             :wait nil)])
-      (run-until-halt l1/pick-process)
+               (c/make-proc :pri 1
+                            :state (fn [_]
+                                     (reset! flag true)
+                                     (s/pick-process))
+                            :wait nil)])
+      (run-until-halt s/pick-process)
       ;; p1 が wait → p2 が flag=true → p1 が再開
       (is (= [:resumed] @log)))))
 
@@ -269,19 +270,19 @@
 (deftest yield-with-setpri-test
   (testing "setpri + yield で低優先度プロセスに実行権を渡し、後で再開する"
     (let [log (atom [])]
-      (reset! l1/PROCS
-              [(l1/make-proc :pri 5
-                             :state (fn [_]
-                                      (swap! log conj :p1-before)
-                                      (l2/setpri 1)
-                                      (l2/yield
-                                        (swap! log conj :p1-after)
-                                        (l2/halt)))
-                             :wait nil)
-               (l1/make-proc :pri 3
-                             :state (fn [_]
-                                      (swap! log conj :p2)
-                                      (l1/pick-process))
-                             :wait nil)])
-      (run-until-halt l1/pick-process)
+      (reset! s/PROCS
+              [(c/make-proc :pri 5
+                            :state (fn [_]
+                                     (swap! log conj :p1-before)
+                                     (con/setpri 1)
+                                     (con/yield
+                                       (swap! log conj :p1-after)
+                                       (con/halt)))
+                            :wait nil)
+               (c/make-proc :pri 3
+                            :state (fn [_]
+                                     (swap! log conj :p2)
+                                     (s/pick-process))
+                            :wait nil)])
+      (run-until-halt s/pick-process)
       (is (= [:p1-before :p2 :p1-after] @log)))))
