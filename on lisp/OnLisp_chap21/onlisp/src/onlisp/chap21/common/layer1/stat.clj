@@ -1,16 +1,9 @@
-(ns onlisp.chap21.common.layer1)
+(ns onlisp.chap21.common.layer1.stat
+  (:require
+    [onlisp.chap21.common.layer1.core :as c]))
 
 
 ;; [ P283 chap21.1 ]
-
-(defrecord Proc
-  [pri state wait])
-
-
-(defn make-proc
-  [& {:keys [pri state wait]
-      :as p}]
-  (map->Proc p))
 
 
 (declare pick-process)
@@ -18,13 +11,13 @@
 
 ;; ^:dynamic を付与する必要はなかった
 
-(def HALT (gensym))
-(def PROCS (atom nil))
-(def PROC (atom nil))
+(def PROC (atom nil))  ; 実行中のプロセス
+(def PROCS (atom nil)) ; 中断されているプロセスのリスト
+(def HALT (gensym))    ; プロセス中断であることを示す目印（通常の例外と区別したい）
 
 
 (def DEFAULT-PROC
-  (make-proc
+  (c/make-proc
     :state
     (fn [& x]
       (do
@@ -35,12 +28,12 @@
 
 
 (defmacro multiple-value-bind
-  [binds seq & body]
+  [binds expr & body]
   `(let [;; gensym 部分
          ~@(mapcat #(list (symbol %) '(gensym)) binds)
          ;; bind 部分
          [~@(map #(symbol %) binds)]
-         (if ~(sequential? seq) ~seq (list ~seq))]
+         (if ~(sequential? expr) ~expr (list ~expr))]
      ~@body))
 
 
@@ -54,12 +47,9 @@
             pri (:pri current-p)
             w (:wait current-p)
             v (or (not w) (when (fn? w) (w)))]
-
-        ;; (println "v:" (list pri max (> pri max) w v val1))
-        ;; (println "v:" (list  pri (> pri max) v))
-
         (recur
           (if (and pri (> pri max) v)
+            ;; 最も優先度の高いプロセスを返す
             [current-p pri v]
             acc)
           (rest p))))))
@@ -71,10 +61,9 @@
     (p v)
     (most-urgent-process)
 
-    ;; (println "p:" p v)
-    ;; (println "p2:" (:state p) ":" (:wait p))
-
+    ;; 実行中のプロセスを上書きする
     (reset! PROC p)
+    ;; 中断されているプロセスのリストから除く
     (swap! PROCS #(remove #{p} %))
 
     ;; :wait が nil（待機条件なし）のときは nil を渡す。
