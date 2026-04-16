@@ -1,8 +1,8 @@
 (ns onlisp.chap21.cps-test
   (:require
     [clojure.test :refer [deftest is testing use-fixtures]]
-    [onlisp.chap21.black-board         :as b]
-    [onlisp.chap21.common.layer1       :as l1]
+    [onlisp.chap21.black-board        :as b]
+    [onlisp.chap21.common.layer1.stat :as s]
     [onlisp.chap21.cps :as mproc]))
 
 
@@ -23,13 +23,13 @@
 
 (defn reset-state!
   [f]
-  (reset! l1/PROCS         nil)
-  (reset! l1/PROC          nil)
+  (reset! s/PROCS          nil)
+  (reset! s/PROC           nil)
   (reset! b/BBOARD         nil)
   (reset! mproc/OPEN-DOORS nil)
   (f)
-  (reset! l1/PROCS         nil)
-  (reset! l1/PROC          nil)
+  (reset! s/PROCS          nil)
+  (reset! s/PROC           nil)
   (reset! b/BBOARD         nil)
   (reset! mproc/OPEN-DOORS nil))
 

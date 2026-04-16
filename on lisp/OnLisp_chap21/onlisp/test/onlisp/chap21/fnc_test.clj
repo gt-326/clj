@@ -2,7 +2,7 @@
   (:require
     [clojure.test :refer [deftest is testing use-fixtures]]
     [onlisp.chap21.black-board     :as b]
-    [onlisp.chap21.common.layer1   :as l1]
+    [onlisp.chap21.common.layer1.stat :as s]
     [onlisp.chap21.fnc :as mproc]))
 
 
@@ -14,20 +14,20 @@
 ;; 各テスト前後に reset! でリセットする。
 ;;
 ;; ballet / barbarians はプログラム終了後に DEFAULT-PROC（stdin 待ち）に
-;; 遷移するため、with-in-str で halt フoォームを供給して停止させる。
+;; 遷移するため、with-in-str で halt フォームを供給して停止させる。
 ;;
 ;; ballet / barbarians は通常 defn で定義されており、
 ;; (mproc/ballet) / (mproc/barbarians) で直接呼び出せる。
 
 (defn reset-state!
   [f]
-  (reset! l1/PROCS          nil)
-  (reset! l1/PROC           nil)
+  (reset! s/PROCS           nil)
+  (reset! s/PROC            nil)
   (reset! b/BBOARD          nil)
   (reset! mproc/OPEN-DOORS  nil)
   (f)
-  (reset! l1/PROCS          nil)
-  (reset! l1/PROC           nil)
+  (reset! s/PROCS           nil)
+  (reset! s/PROC            nil)
   (reset! b/BBOARD          nil)
   (reset! mproc/OPEN-DOORS  nil))
 
@@ -48,14 +48,14 @@
     (reset! mproc/OPEN-DOORS ['door1])
     (let [output (with-out-str
                    (with-in-str "(onlisp.chap21.common.layer2/halt)"
-                     (mproc/ped)))] \
+                     (mproc/ped)))]
       (is (.contains output "Entering : door1"))))
 
   (testing "OPEN-DOORS が空のとき入室せず halt で停止する"
     (reset! mproc/OPEN-DOORS nil)
     (let [output (with-out-str
                    (with-in-str "(onlisp.chap21.common.layer2/halt)"
-                     (mproc/ped)))] \
+                     (mproc/ped)))]
       (is (not (.contains output "Entering"))))))
 
 
