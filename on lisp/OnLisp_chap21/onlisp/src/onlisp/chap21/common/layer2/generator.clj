@@ -1,6 +1,6 @@
-(ns onlisp.chap21.common.layer3
+(ns onlisp.chap21.common.layer2.generator
   (:require
-    [onlisp.chap21.common.layer1 :as l1]
+    [onlisp.chap21.common.layer1.stat :as s]
     [onlisp.common.util :as u]))
 
 
@@ -13,30 +13,27 @@
   `(defn ~name [~@args]
      (try
        ;; 初期化（中断したプロセスを消去する）
-       (reset! l1/PROCS nil)
-       ;; ここでプロセスを追加している想定？
+       (reset! s/PROCS nil)
+       ;; 「fork によりプロセスを PROCS へ登録する」
        ~@body
-       ;; 優先度に応じて登録されたプロセスを実行する？
-       (loop [] (l1/pick-process))
+       ;; pick-process は halt 例外が出るまで内部で相互再帰する。
+       (s/pick-process)
 
        (catch Exception ~'ex
-         (if (= (str l1/HALT) (.getMessage ~'ex))
+         (if (= (str s/HALT) (.getMessage ~'ex))
            (str "[On Lisp] [chap.21 multi process] system halt: " (.getData ~'ex))
-           (str "normal exeption: " (.getMessage ~'ex)))))))
+           (str "normal exception: " (.getMessage ~'ex)))))))
 
 
 (defmacro program-cps
   [name args & body]
   `(u/=defn ~name [~@args]
             (try
-              ;; 初期化（中断したプロセスを消去する）
-              (reset! l1/PROCS nil)
-              ;; ここでプロセスを追加している想定？
+              (reset! s/PROCS nil)
               ~@body
-              ;; 優先度に応じて登録されたプロセスを実行する？
-              (loop [] (l1/pick-process))
+              (s/pick-process)
 
               (catch Exception ~'ex
-                (if (= (str l1/HALT) (.getMessage ~'ex))
+                (if (= (str s/HALT) (.getMessage ~'ex))
                   (str "[On Lisp] [chap.21 multi process] system halt: " (.getData ~'ex))
-                  (str "normal exeption: " (.getMessage ~'ex)))))))
+                  (str "normal exception: " (.getMessage ~'ex)))))))
