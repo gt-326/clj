@@ -1,6 +1,7 @@
-(ns onlisp.chap21.common.layer2
+(ns onlisp.chap21.common.layer2.controller
   (:require
-    [onlisp.chap21.common.layer1 :as l1]))
+    [onlisp.chap21.common.layer1.core :as c]
+    [onlisp.chap21.common.layer1.stat :as s]))
 
 
 ;; [ P283 chap21.1 ]
@@ -9,62 +10,30 @@
 (defmacro fork
   [expr pri]
   `(let [expr# '~expr
-         p# (l1/make-proc
-              :state (fn [& g#] (do ~expr (l1/pick-process)))
+         p# (c/make-proc
+              :state (fn [& g#] (do ~expr (s/pick-process)))
               :pri   ~pri)]
+     ;; 新しいプロセスが追加される
+     (swap! s/PROCS conj p#)
 
-     ;; (println "cnt procs [before]:" (count @PROCS))
-     (swap! l1/PROCS conj p#)
-     ;; (println "cnt procs [after]:" (count @PROCS))
-
-     ;; can not understand what this part means
+     ;; この戻り値は、呼び出し元の program では活用されていない。
+     ;; 確認したいときには、print を有効にする。
+     ;; (println "pushed proc : " expr#)
      expr#))
-
-
-(defn arbitrator
-  [test cont]
-  (do
-    ;; 1回の swap! で両フィールドを更新
-    (swap! l1/PROC #(assoc % :wait test :state cont))
-    ;; 2回 swap!（非原子的）
-    ;; (swap! l1/PROC assoc :wait test)
-    ;; (swap! l1/PROC assoc :state cont)
-
-    ;; (println "cnt procs [before]:" (count @PROCS))
-    (swap! l1/PROCS conj @l1/PROC)
-    ;; (println "cnt procs [after]:" (count @PROCS))
-
-    (l1/pick-process)))
-
-
-(defmacro wait
-  [param test & body]
-  `(arbitrator
-     ;; test -> :wait
-     (fn [] ~test)
-     ;; cont -> :state
-     (fn [~param] (do ~@body))))
-
-
-(defmacro yield
-  [& body]
-  `(arbitrator
-     ;; test
-     nil
-     ;; cont
-     (fn [x#] (do ~@body))))
 
 
 (defn setpri
   [n]
-  (swap! l1/PROC assoc :pri n))
+  ;; 実行中のプロセスの優先度を変更する
+  (swap! s/PROC assoc :pri n))
 
 
 (defn halt
   ([]
    (halt nil))
   ([val]
-   (throw (ex-info (str l1/HALT) {:val val}))))
+   ;; プロセス中断用の例外を投げる
+   (throw (ex-info (str s/HALT) {:val val}))))
 
 
 (defn kill
@@ -75,8 +44,41 @@
   ([]
    (kill nil))
   ([obj]
-   ;; (println "obj:" obj)
    (if obj
-     (swap! l1/PROCS #(remove #{obj} %))
-     (l1/pick-process))
+     ;; 中断されているプロセスのリストから対象を除外する
+     (swap! s/PROCS #(remove #{obj} %))
+     (s/pick-process))
    nil))
+
+
+;; ======================
+
+(defn arbitrator
+  [test cont]
+  (do
+    ;; 1回の swap! で両フィールドを更新
+    (swap! s/PROC #(assoc % :wait test :state cont))
+    ;; 実行中のプロセスを「中断されているプロセスのリスト」に追加する
+    (swap! s/PROCS conj @s/PROC)
+    (s/pick-process)))
+
+
+(defmacro wait
+  [param test & body]
+  `(arbitrator
+     ;; [arg1: test] -> :wait
+     (fn []
+       ;; テスト式が「真」を返すまで、その時点の処理が中断される。
+       ~test)
+     ;; [arg2: cont] -> :state
+     (fn [~param] (do ~@body))))
+
+
+(defmacro yield
+  [& body]
+  `(arbitrator
+     nil
+     (fn [x#] (do ~@body))))
+
+
+;; ======================
