@@ -1,8 +1,9 @@
 (ns onlisp.chap21.cps
   (:require
     [onlisp.chap21.black-board :as b]
-    [onlisp.chap21.common.layer2 :as l2]
-    [onlisp.chap21.common.layer3 :as l3]
+    [onlisp.chap21.common.layer2.controller :as c]
+    [onlisp.chap21.common.layer2.generator :as g]
+    [onlisp.chap21.warring-state-period :as w]
     [onlisp.common.util :as u]))
 
 
@@ -15,12 +16,12 @@
 
 (u/=defn pedestrian
          []
-         (l2/wait d (first @OPEN-DOORS)
-                  (println "Entering :" d)))
+         (c/wait d (first @OPEN-DOORS)
+                 (println "Entering :" d)))
 
 
-(l3/program-cps ped ()
-                (l2/fork (pedestrian) 1))
+(g/program-cps ped ()
+               (c/fork (pedestrian) 1))
 
 
 ;; ======================
@@ -32,30 +33,30 @@
          (do
            (print "\nApproach" door ". ")
            (b/claim 'knock door)
-           (l2/wait d (b/check 'open door)
-                    (print "Enter" door ". ")
-                    (b/unclaim 'knock door)
-                    (b/claim 'inside door))))
+           (c/wait d (b/check 'open door)
+                   (print "Enter" door ". ")
+                   (b/unclaim 'knock door)
+                   (b/claim 'inside door))))
 
 
 (u/=defn host
          [door]
          (do
-           (l2/wait k (b/check 'knock door)
-                    (print "Open" door ". ")
-                    (b/claim 'open door)
-                    (l2/wait g (b/check 'inside door)
+           (c/wait k (b/check 'knock door)
+                   (print "Open" door ". ")
+                   (b/claim 'open door)
+                   (c/wait g (b/check 'inside door)
 
-                             (print "Close" door ".")
-                             (b/unclaim 'open door)))))
+                           (print "Close" door ".")
+                           (b/unclaim 'open door)))))
 
 
-(l3/program-cps ballet ()
-                (l2/fork (visitor 'door1) 1)
-                (l2/fork (host 'door1) 1)
+(g/program-cps ballet ()
+               (c/fork (visitor 'door1) 1)
+               (c/fork (host 'door1) 1)
 
-                (l2/fork (visitor 'door2) 1)
-                (l2/fork (host 'door2) 1))
+               (c/fork (visitor 'door2) 1)
+               (c/fork (host 'door2) 1))
 
 
 ;; ======================
@@ -65,23 +66,23 @@
 (u/=defn capture
          [city]
          (do
-           (b/my-take city)
+           (w/my-take city)
            ;; pri: 100 -> 1
-           (l2/setpri 1)
-           (l2/yield
-             (b/fortify city))))
+           (c/setpri 1)
+           (c/yield
+             (w/fortify city))))
 
 
 (u/=defn plunder
          [city]
          (do
-           (b/loot city)
-           (b/ransom city)))
+           (w/loot city)
+           (w/ransom city)))
 
 
-(l3/program-cps barbarians ()
-                (l2/fork (capture 'ROME) 100)
-                (l2/fork (plunder 'ROME) 98))
+(g/program-cps barbarians ()
+               (c/fork (capture 'ROME) 100)
+               (c/fork (plunder 'ROME) 98))
 
 
 ;; ======================

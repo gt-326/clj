@@ -11,39 +11,19 @@
 
 (defn claim
   [& f]
-  (if (seq f)
+  (when (seq f)
     (swap! BBOARD conj f)))
 
 
 (defn unclaim
   [& f]
-  (if (seq f)
+  (when (seq f)
     (swap! BBOARD #(remove #{f} %))))
 
 
 (defn check
   [& f]
-  (if (seq f)
+  (when (seq f)
     ;; seq は空コレクションを nil に変換するため、wait の条件判定が正しく機能します。
     ;; また first と異なり全マッチを返すため原著 CL の動作に揃います。
     (seq (filter #(= % f) @BBOARD))))
-
-
-(defn my-take
-  [c]
-  (println (format "Liberating %s." c)))
-
-
-(defn fortify
-  [c]
-  (println (format "Rebuilding %s." c)))
-
-
-(defn loot
-  [c]
-  (println (format "Nationalizing %s." c)))
-
-
-(defn ransom
-  [c]
-  (println (format "Refinancing %s." c)))
