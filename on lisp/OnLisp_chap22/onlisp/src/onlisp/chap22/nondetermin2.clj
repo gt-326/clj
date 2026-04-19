@@ -23,7 +23,21 @@
 
 ;; [ P308 chap22.6 ]
 
-(defn bf-path
+
+;; ループのある有向グラフ
+
+(defn kids2
+  [n]
+  (case n
+    a '(b d)
+    b '(c)
+    c '(a)
+    d '(e)
+    '()))
+
+
+;; buggy
+(defn bf-path_
   [dest queue]
   (when (seq queue)
     (let [path (first queue)
@@ -36,21 +50,57 @@
                             (n/kids node))))))))
 
 
-(defn path
+;; buggy
+(defn path_
   [node1 node2]
-  (bf-path node2 (list (list node1))))
+  (bf-path_ node2 (list (list node1))))
+
+
+;; 決定的探索
+;; 以下のように、幅優先探索であれば、循環経路を回避できる。
+
+(defn bf-path
+  [graph dest queue]
+  (when (seq queue)
+    (let [path (first queue)
+          node (first path)]
+
+      ;; (println path ":" node)
+
+      (if (= node dest)
+        ;; (rest (reverse path))
+        (reverse path)
+        (recur
+          graph
+          dest
+          (concat (rest queue)
+                  (map #(cons % path)
+                       (graph node))))))))
+
+
+(defn path
+  [graph node1 node2]
+  (reset! c/PATHS [])
+  (bf-path graph node2 (list (list node1))))
 
 
 (comment
 
-;;  onlisp.core=> (n2/path 'a 'g)
+;;  onlisp.core=> (n2/path_ 'a 'g)
 ;;  (c f g)
 
-;;  onlisp.core=> (n2/path 'a 'd)
+;;  onlisp.core=> (n2/path_ 'a 'd)
 ;;  (b d)
 
-;;  onlisp.core=> (n2/path 'a 'z)
+;;  onlisp.core=> (n2/path_ 'a 'z)
 ;;  nil
+
+
+;;  onlisp.core=> (n2/path n/kids 'a 'g)
+;;  (a c f g)
+
+;;  onlisp.core=> (n2/path n2/kids2 'a 'e)
+;;  (a d e)
 
   )
 
@@ -78,17 +128,9 @@
   )
 
 
-;; ループのある有向グラフ
-
-(defn kids2
-  [n]
-  (case n
-    a '(b d)
-    b '(c)
-    c '(a)
-    d '(e)
-    '()))
-
+;; 非決定的探索
+;; 以下のように、深さ優先探索でも、一度通った経路かどうかの判断を用意しておけば、
+;; 「真の choose」同様の挙動を実現できた。
 
 ;; 再帰実装
 (u/=defn descent-impl2 [graph n1 n2 visited]
