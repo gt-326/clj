@@ -78,10 +78,28 @@
                        (graph node))))))))
 
 
+;; loop/recur 版：
+
+(defn bf-path2
+  [graph dest queue]
+  (loop [q queue]
+    (when (seq q)
+      (let [path (first q)
+            node (first path)
+            node-kids (graph node)]
+        (if (= node dest)
+          (reverse path)
+          (recur
+            (concat
+              (rest q)
+              (map #(cons % path) node-kids))))))))
+
+
 (defn path
   [graph node1 node2]
   (reset! c/PATHS [])
-  (bf-path graph node2 (list (list node1))))
+  ;; (bf-path graph node2 (list (list node1)))
+  (bf-path2 graph node2 (list (list node1))))
 
 
 (comment
@@ -103,6 +121,31 @@
 ;;  (a d e)
 
   )
+
+
+;; こういう書き方もできるよ、というくらいの意味で、ベクタ版をば。
+
+(defn bf-path3
+  [graph dest queue]
+  (loop [q queue]
+    (when (seq q)
+      (let [path (first q)
+            node (peek path)        ; first → peek（末尾が現在ノード）
+            node-kids (graph node)]
+        (if (= node dest)
+          path                      ; reverse 不要（変換が必要なら、呼び出し元でしてもらう）
+          (recur
+            (concat
+              (rest q)
+              (map #(conj path %)   ; cons % path → conj path %
+                   node-kids))))))))
+
+
+(defn path3
+  [graph node1 node2]
+  (reset! c/PATHS [])
+  (bf-path3 graph node2 (list [node1])))  ; (list node1) → [node1]（ベクタ）
+
 
 
 ;; Clojure CPS: コード全体を CPS スタイルに変換する必要がある
