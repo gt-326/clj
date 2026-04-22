@@ -4,6 +4,23 @@
     [onlisp.common.util :as u]))
 
 
+;; [ P301 chap22.4 ]
+
+
+(defn do2
+  [x]
+  (do
+    (reset! c/PATHS [])
+    (c/choose (+ x 2) (* x 2) (Math/pow x 2))))
+
+
+(let [x 2]
+  (reset! c/PATHS [])
+  (c/choose
+    (+ x 1)
+    (+ x 100)))
+
+
 ;; [ P303 chap22.4 ]
 
 
