@@ -319,6 +319,47 @@
 
 
 ;; =====================================================
+;; with-parses-slow2 — down2 + up（回帰テスト）
+;; =====================================================
+;;
+;; down2 の =bind が [*** pos arg_regs arg_visited]（4引数）のままだと、
+;; up が (*cont* result pos (rest arg_regs)) と3引数で呼んだ際に
+;; ArityException が発生する。
+;;
+;; 修正後（3引数 bind）の動作を確認するリグレッションテスト。
+;; atn6 の '(arrows) パース失敗と同じ構造:
+;;   down2 でサブネットワークを呼び出し → sub 内の terminal node が up → *** に束縛
+
+(c/defnode-slow2 d2-sub-end
+  (o/up (r/getr ditem)))
+
+(c/defnode-slow2 d2-sub
+  (o/category2 n d2-sub-end (r/setr ditem ***)))
+
+(c/defnode-slow2 d2-main-end
+  (o/up `(~'found ~(r/getr dword))))
+
+(c/defnode-slow2 d2-main
+  (o/down2 d2-sub d2-main-end (r/setr dword ***)))
+
+
+(deftest with-parses-slow2-down2-test
+  (testing "down2 経由で呼ばれた sub-network の up が正常に動作する（down2 アリティ不一致の回帰テスト）"
+    (let [results (atom [])]
+      (p/with-parses-slow2 d2-main '(arrow)
+        (swap! results conj parse))
+      (is (= ['(found arrow)] @results)))))
+
+
+(deftest with-parses-slow2-down2-no-match-test
+  (testing "サブネットワークが失敗すれば down2 全体も失敗する"
+    (let [results (atom [])]
+      (p/with-parses-slow2 d2-main '(the)
+        (swap! results conj parse))
+      (is (= [] @results)))))
+
+
+;; =====================================================
 ;; with-parses-slow5 — defnode-slow5 + category4 + up
 ;; =====================================================
 ;;

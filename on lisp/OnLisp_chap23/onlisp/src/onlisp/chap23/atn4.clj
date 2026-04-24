@@ -137,15 +137,17 @@
 
 ;; ======================================================
 
-(p/with-parses mods '(arrow time) (println "Parsing: " parse))
+(defn foo
+  []
+  (p/with-parses mods '(arrow time) (println "Parsing: " parse))
 
-(p/with-parses np '(it) (println "Parsing: " parse))
+  (p/with-parses np '(it) (println "Parsing: " parse))
 
-(p/with-parses np '(arrows) (println "Parsing: " parse))
+  (p/with-parses np '(arrows) (println "Parsing: " parse))
 
-(p/with-parses np '(a time fly like him) (println "Parsing: " parse))
+  (p/with-parses np '(a time fly like him) (println "Parsing: " parse))
 
-(p/with-parses s '(time flies like an arrow) (println "Parsing: " parse))
+  (p/with-parses s '(time flies like an arrow) (println "Parsing: " parse)))
 
 
 (comment

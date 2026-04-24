@@ -149,9 +149,33 @@
             (~next ~'pos ~(c/compile-cmds cmds))))
 
 
+(defmacro down2
+  [sub next & cmds]
+  `(u/=bind [~'*** ~'pos ~'arg_regs]
+            (~sub ~'pos (cons nil ~'arg_regs) ~'arg_visited)
+            (~next ~'pos ~(c/compile-cmds cmds) ~'arg_visited)))
+
+
+(defmacro down3
+  [sub next & cmds]
+  `(u/=bind [~'*** ~'pos ~'arg_regs]
+            (~sub ~'pos (cons nil ~'arg_regs) ~'arg_visited ~'arg_sent)
+            (~next ~'pos ~(c/compile-cmds cmds) ~'arg_visited ~'arg_sent)))
+
+
 (defmacro jump
   [next & cmds]
   `(~next ~'pos ~(c/compile-cmds cmds)))
+
+
+(defmacro jump2
+  [next & cmds]
+  `(~next ~'pos ~(c/compile-cmds cmds) ~'arg_visited))
+
+
+(defmacro jump3
+  [next & cmds]
+  `(~next ~'pos ~(c/compile-cmds cmds) ~'arg_visited ~'arg_sent))
 
 
 (defmacro up
