@@ -40,11 +40,27 @@
 
 
 (let [fnc (c/=fn [n] (add1 n))]
-  (c/=bind [y] (c/=fncall fnc 9)
-           (format "9 + 1 = %s" y)))
+  ;; 処理１
+  (println "1: " c/*cont*)
+  (c/=bind [y]
+           (let [val (c/=fncall fnc 9)]
+             ;; 処理３：上書きされる
+             (println "3: " c/*cont*)
+             val)
+           (do
+             ;; 処理２：まだ変わらない
+             (println "2: " c/*cont*)
+             (println (format "9 + 1 = %s" y))))
+  ;; 処理４：元に戻っている
+  (println "4: " c/*cont*))
 
 
-;; #_=> "9 + 1 = 10"
+;; #_=> 1:  #object[clojure.core$identity 0x621c3137 clojure.core$identity@621c3137]
+;; 2:  #object[clojure.core$identity 0x621c3137 clojure.core$identity@621c3137]
+;; 9 + 1 = 10
+;; 3:  #object[onlisp.core$eval2407$fn__2410 0x10b8b969 onlisp.core$eval2407$fn__2410@10b8b969]
+;; 4:  #object[clojure.core$identity 0x621c3137 clojure.core$identity@621c3137]
+;; nil
 
 
 (c/=defn bar [x]
@@ -55,15 +71,20 @@
          (c/=values (str "baz: " (inc x))))
 
 
-(c/=defn foo [x]
+(c/=defn foo2 [x]
          (c/=bind [y] (bar x)
                   (println (format "Ho %s" y))
                   (c/=bind [z] (baz x)
                            (println (format "Hum %s." z))
-                           (c/=values x y z))))
+                           (do
+                             ;; (println "*cont* :" c/*cont*)
+
+                             ;; *cont*: identity なので list でラップしないとエラーになる
+                             ;; (c/=values x y z)
+                             (c/=values (list x y z))))))
 
 
-;; onlisp.core=> (foo 1)
+;; onlisp.core=> (foo2 1)
 ;; Ho bar: 1
 ;; Hum. baz: 2
 ;; (1 "bar: 1" "baz: 2")
