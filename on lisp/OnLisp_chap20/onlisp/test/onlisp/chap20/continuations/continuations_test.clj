@@ -21,13 +21,15 @@
 
 ;; テスト用 CPS 関数
 (c/=defn add5 [x]
-  (c/=values (+ x 5)))
+         (c/=values (+ x 5)))
+
 
 (c/=defn add1 [x]
-  (c/=values (inc x)))
+         (c/=values (inc x)))
+
 
 (c/=defn sum-two [x y]
-  (c/=values (+ x y)))
+         (c/=values (+ x y)))
 
 
 ;; =defn による再帰 CPS 関数
@@ -39,9 +41,9 @@
 ;;                                  (countdown ...) → (=countdown *cont* ...) に展開される
 
 (c/=defn countdown [n acc]
-  (if (zero? n)
-    (c/=values acc)
-    (countdown (dec n) (conj acc n))))
+         (if (zero? n)
+           (c/=values acc)
+           (countdown (dec n) (conj acc n))))
 
 
 ;; NOTE: =bind を使ったツリー再帰（fib など）はこの実装では動作しない。
@@ -64,7 +66,7 @@
 ;; 自分自身を呼ばないため、マクロの定義順序は関係しない。
 
 (c/=defn_ add5-nr [x]
-  (c/=values (+ x 5)))
+          (c/=values (+ x 5)))
 
 
 ;; =====================================================
@@ -130,15 +132,15 @@
   (testing "=bind の body が正しく実行される"
     (let [result (atom nil)]
       (c/=bind [y]
-        (c/=values 7)
-        (reset! result (* y 10)))
+               (c/=values 7)
+               (reset! result (* y 10)))
       (is (= 70 @result))))
 
   (testing "=bind 実行後、*cont* は identity に自動的に戻る"
     (let [cont-before c/*cont*]
       (c/=bind [y]
-        (c/=values 99)
-        (identity y))
+               (c/=values 99)
+               (identity y))
       (let [cont-after c/*cont*]
         (is (= identity cont-before))
         (is (= identity cont-after))
@@ -149,16 +151,16 @@
     (let [cont-before c/*cont*
           cont-in-body (atom nil)]
       (c/=bind [_y]
-        (c/=values :trigger)
-        (reset! cont-in-body c/*cont*))
+               (c/=values :trigger)
+               (reset! cont-in-body c/*cont*))
       (is (identical? cont-before @cont-in-body)
           "=bind の body 内では *cont* は外側の継続と同じ")))
 
   (testing "=bind の body 内で =values を呼べる"
     (let [result (atom nil)]
       (c/=bind [m n]
-        (c/=values 'hello 'there)
-        (reset! result (list m n)))
+               (c/=values 'hello 'there)
+               (reset! result (list m n)))
       (is (= '(hello there) @result))))
 
   (testing "=bind を繰り返しても *cont* は毎回 identity に戻る"
@@ -188,19 +190,19 @@
     (let [outer-called (atom false)
           inner-called (atom false)]
       (c/=bind [_y]
-        (c/=bind [_z]
-          (c/=values :inner-value)
-          (reset! inner-called true))
-        (reset! outer-called true))
+               (c/=bind [_z]
+                        (c/=values :inner-value)
+                        (reset! inner-called true))
+               (reset! outer-called true))
       (is (true?  @inner-called) "inner body は実行される")
       (is (false? @outer-called) "outer body は実行されない")))
 
   (testing "ネスト後、*cont* は identity に戻る"
     (c/=bind [_y]
-      (c/=bind [_z]
-        (c/=values 1)
-        :inner-done)
-      :outer-done)
+             (c/=bind [_z]
+                      (c/=values 1)
+                      :inner-done)
+             :outer-done)
     (is (= identity c/*cont*)
         "*cont* は identity に自動的に戻る")))
 
@@ -214,16 +216,16 @@
     (let [result (atom nil)
           f      (c/=fn [n] (add1 n))]
       (c/=bind [y]
-        (c/=fncall f 9)
-        (reset! result y))
+               (c/=fncall f 9)
+               (reset! result y))
       (is (= 10 @result))))
 
   (testing "=fncall 後も *cont* は identity に戻る"
     (let [cont-before c/*cont*
           f           (c/=fn [n] (add1 n))]
       (c/=bind [_y]
-        (c/=fncall f 1)
-        :done)
+               (c/=fncall f 1)
+               :done)
       (is (identical? cont-before c/*cont*)
           "*cont* は =bind 前の状態に戻っている"))))
 
@@ -237,15 +239,15 @@
     (let [results (atom [])]
       (doseq [pair [[1 2] [3 4] [5 6]]]
         (c/=bind [s]
-          (c/=apply =sum-two pair)
-          (swap! results conj s)))
+                 (c/=apply =sum-two pair)
+                 (swap! results conj s)))
       (is (= [3 7 11] @results))))
 
   (testing "=apply 後も *cont* は identity に戻る"
     (let [cont-before c/*cont*]
       (c/=bind [_s]
-        (c/=apply =sum-two [10 20])
-        :done)
+               (c/=apply =sum-two [10 20])
+               :done)
       (is (identical? cont-before c/*cont*)
           "=apply を含む =bind も *cont* を元に戻す"))))
 
@@ -272,23 +274,23 @@
   (testing "=defn による再帰: countdown が正しく動く"
     (let [result (atom nil)]
       (c/=bind [r]
-        (countdown 3 [])
-        (reset! result r))
+               (countdown 3 [])
+               (reset! result r))
       (is (= [3 2 1] @result))))
 
   (testing "=defn による再帰: countdown 0 → 空ベクタをそのまま返す"
     (let [result (atom nil)]
       (c/=bind [r]
-        (countdown 0 [])
-        (reset! result r))
+               (countdown 0 [])
+               (reset! result r))
       (is (= [] @result))))
 
   (testing "=defn による再帰: countdown で複数の値を連続確認"
     (let [results (atom [])]
       (doseq [n [1 2 3 4 5]]
         (c/=bind [r]
-          (countdown n [])
-          (swap! results conj r)))
+                 (countdown n [])
+                 (swap! results conj r)))
       (is (= [[1] [2 1] [3 2 1] [4 3 2 1] [5 4 3 2 1]] @results)))))
 
 
@@ -309,6 +311,6 @@
     (is (thrown? Exception
           (eval
             '(onlisp.chap20.continuations/=defn_ countdown-bad [n acc]
-               (if (zero? n)
-                 (onlisp.chap20.continuations/=values acc)
-                 (countdown-bad (dec n) (conj acc n)))))))))
+                                                 (if (zero? n)
+                                                   (onlisp.chap20.continuations/=values acc)
+                                                   (countdown-bad (dec n) (conj acc n)))))))))

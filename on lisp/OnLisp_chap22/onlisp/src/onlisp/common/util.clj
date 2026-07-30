@@ -46,10 +46,15 @@
        ;; マクロ部分: 完全修飾シンボルで呼び出すことで
        ;; 別ネームスペースからでも解決できる
        (defmacro ~symbol-name [~@params]
-         (list '~qf '~qcont ~@params))
+         (list '~qf '~qcont ~@params)
+         ;; (list '~qf ~@params)
+         )
 
        ;; 関数部分
-       (defn ~f [~'*cont* ~@params] ~@body))))
+       (defn ~f [~'*cont* ~@params] ~@body)
+       ;; (defn ~f [~'cont ~@params] ~@body)
+       ;; (defn ~f [~@params] ~@body)
+       )))
 
 
 ;; *cont* は ^:dynamic Var + binding で管理している。

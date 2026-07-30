@@ -66,6 +66,15 @@
        ~expr)))
 
 
+(defmacro =bind__
+  [params expr & body]
+  `(let [outer# *cont*]
+     (let [~'*cont* (fn ~params
+                      (binding [*cont* outer#]
+                        ~@body))]
+       ~expr)))
+
+
 (defmacro =values
   [& retvals]
   `(*cont* ~@retvals))
