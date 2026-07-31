@@ -65,7 +65,7 @@
 
   (paip.common.gps/gps_6 false
                           '(son-at-home have-money car-works)
-                          '(son-at-school have-momey))
+                          '(son-at-school have-money))
 
   ;;  [ debug ]
   ;;  1 : Goal: son-at-school
@@ -73,26 +73,36 @@
   ;;  3 :  Goal: son-at-home
   ;;  4 :  Goal: have-money
   ;;  5 : Action: taxi-son-to-school
-  ;;  6 : Goal: have-momey
-  ;;  7 : Goal: have-momey
-
-  ;;  [ result ]
+  ;;  6 : Goal: have-money
+  ;;  7 : Goal: have-money
+  ;;  8 : Goal: son-at-school
+  ;;  9 : Consider: taxi-son-to-school
+  ;;  10 :  Goal: son-at-home
+  ;;  11 :  Goal: have-money
+  ;;  12 : Action: taxi-son-to-school
+  ;;
+  ;;  ;;  [ result ]
   ;;  ()
 
 
   (paip.common.gps/gps_6 false
                           '(son-at-home have-money car-works)
-                          '(have-momey son-at-school))
+                          '(have-money son-at-school))
 
   ;;  [ debug ]
-  ;;  1 : Goal: have-momey
+  ;;  1 : Goal: have-money
   ;;  2 : Goal: son-at-school
   ;;  3 : Consider: taxi-son-to-school
   ;;  4 :  Goal: son-at-home
   ;;  5 :  Goal: have-money
   ;;  6 : Action: taxi-son-to-school
-  ;;  7 : Goal: have-momey
-
+  ;;  7 : Goal: son-at-school
+  ;;  8 : Consider: taxi-son-to-school
+  ;;  9 :  Goal: son-at-home
+  ;;  10 :  Goal: have-money
+  ;;  11 : Action: taxi-son-to-school
+  ;;  12 : Goal: have-money
+  ;;
   ;;  [ result ]
   ;;  ()
 
