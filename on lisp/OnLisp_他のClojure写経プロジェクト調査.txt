@@ -1,0 +1,93 @@
+On Lisp を Clojure で写経している他のGitHubプロジェクトの調査メモ
+
+調査日: 2026-08-05
+
+
+;;===================================
+
+■ 調べ方
+
+1. GitHub Search API（リポジトリ検索、認証不要）
+   - クエリ: "on-lisp clojure", "onlisp clojure"
+2. Web検索（choose-bind, 継続マクロなど20章以降に特徴的なキーワードで補完）
+
+※ GitHubのコード検索API（リポジトリ名に関係なく全文検索できる）は認証が
+  必要で、今回は利用できなかった。そのため「リポジトリ名や説明文に
+  "on lisp"を含まないプロジェクト」は見落としている可能性がある。
+
+
+;;===================================
+
+■ 見つかったリポジトリ（スター数順、最終更新日はpushed_at＝最終コミット日を記載）
+
+rickhall2000/OnLisp                      55⭐  11章まで   最終更新: 2014-06-05
+  https://github.com/rickhall2000/OnLisp
+  "A collection of examples from On Lisp by Paul Graham translated into Clojure."
+
+stuarthalloway/onlisp-clojure            25⭐  10章まで   最終更新: 2008-12-21
+  https://github.com/stuarthalloway/onlisp-clojure
+  "Slowly converting onlisp examples"
+  ※ 作者はStuart Halloway（"Programming Clojure"の著者、Clojureコミュニティで著名）
+
+pangloss/onlisp-in-clojure                9⭐  19章まで（今回調べた中で最も進んでいる）   最終更新: 2012-08-09
+  https://github.com/pangloss/onlisp-in-clojure
+  "Working through the examples in On Lisp, translating them to idiomatic Clojure."
+
+arunkn/OnLisp                             1⭐  core.clj一本のみ（章立てなし）   最終更新: 2011-06-17
+  https://github.com/arunkn/OnLisp
+
+halfprogrammer/macro                      1⭐  core.clj一本のみ（章立てなし）   最終更新: 2011-06-30
+  https://github.com/halfprogrammer/macro
+
+tltjr/onlisp-clojure                      1⭐  15章まで   最終更新: 2011-01-10
+  https://github.com/tltjr/onlisp-clojure
+  "Notes on Paul Graham's, \"On Lisp\""
+
+eliben/onlisp-in-clojure                  1⭐  11章まで   最終更新: 2016-12-26
+  https://github.com/eliben/onlisp-in-clojure
+
+shinmuro/on-lisp-clj                      0⭐  16章まで   最終更新: 2014-06-06
+  https://github.com/shinmuro/on-lisp-clj
+
+tail-island/on-lisp-with-clojure          0⭐  core.clj一本のみ（章立てなし）   最終更新: 2015-08-08
+  https://github.com/tail-island/on-lisp-with-clojure
+
+lagenorhynque/on-lisp                     0⭐  4章まで   最終更新: 2018-05-08
+  https://github.com/lagenorhynque/on-lisp
+
+
+;;===================================
+
+■ 結論
+
+上記10件のいずれも、20章「継続」・21章「マルチプロセス」・
+22章「非決定性」・23章「ATNを使ったパーシング」・24章「Prolog」まで
+到達しているものは見当たらなかった。一番先まで進んでいる
+pangloss/onlisp-in-clojureでも19章止まりで、20章手前で止まっている。
+
+Web検索でも、choose-bindや=defn/=bind/*cont*のような継続マクロを
+Clojureに移植した個人プロジェクトの言及は見つからなかった
+（pulley.cpsというClojure用のCPSマクロコンパイラはヒットしたが、
+On Lispの写経ではなく別の汎用ライブラリ）。
+
+見つけやすい主要な写経プロジェクトの中では、gt-326/clj（このリポジトリ）が
+一番深いところ（24章のProlog実装まで）に到達しており、かつ独自の
+mark/cut拡張（chap22/username.clj）やsignup.clj（20章の継続を使った
+多ページフォームの実装）といった、原著の例をそのまま写すだけでなく
+自分で応用まで作っている、という点でも他に例が見当たらなかった。
+
+※ 前述のとおりGitHubコード検索が使えなかったため、「絶対に存在しない」
+  とまでは言い切れない。あくまで今回調べられた範囲での結論。
+
+
+■ 参考リンク（Web検索で見つかったもの）
+
+- 22 Nondeterminism（原著PDF）
+  https://courses.cs.umbc.edu/331/resources/lisp/onLisp/22nondeterminism.pdf
+
+- GitHub - positronic-solutions/pulley.cps
+  https://github.com/positronic-solutions/pulley.cps
+  （Clojure用のCPSマクロコンパイラ。On Lispの写経ではなく別の汎用ライブラリ）
+
+- On Lisp -> Clojure, Chapter 7 - No Fluff Just Stuff（Stuart Halloway本人のブログ記事）
+  https://nofluffjuststuff.com/blog/stuart_halloway/2008/12/on_lisp__clojure_chapter_7_3

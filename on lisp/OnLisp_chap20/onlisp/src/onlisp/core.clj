@@ -3,7 +3,8 @@
     [onlisp.chap20.continuations :as c]
     [onlisp.chap20.continuations.atom :as a]
     [onlisp.chap20.continuations.dynamic :as d]
-    [onlisp.chap20.continuations2 :as c2]))
+    [onlisp.chap20.continuations2 :as c2]
+    [onlisp.chap20.signup :as signup]))
 
 
 ;; [ P275 chap20.2 ]
